@@ -139,10 +139,17 @@ try {
     Assert-Otz 'plugins/installed הוא סימן של אוצריא' (Test-OtzDataRootOwnership $pluginsRoot) $true
 
     # %APPDATA%\<CompanyName>\<ProductName> — השורש האמיתי עומק אחד פנימה.
-    $nestedParent = New-Fixture 'CompanyRoot' -Files @('ProductRoot\shared_preferences.json')
-    Assert-Otz 'שורש נתונים מקונן מזוהה דרך ההורה' (Test-OtzDataRootOwnership $nestedParent) $true
-    Assert-Otz 'ההורה לבדו אינו נושא סימנים' (Test-OtzDataRootMarkers $nestedParent) $false
+    # ההורה עצמו אינו מאושר: הוא נמחק כיעד נפרד במלאי, לא כנגזרת של הבן.
+    $nestedParent = New-Fixture 'CompanyRoot' -Files @('otzaria\shared_preferences.json')
+    Assert-Otz 'ההורה אינו מאושר לפי בן' (Test-OtzDataRootOwnership $nestedParent) $false
     Assert-Otz 'הבן המקונן מוחזר לקריאת ההעדפות' (@(Get-OtzNestedDataRoots $nestedParent).Count -eq 1) $true
+    Assert-Otz 'הבן המקונן עצמו מאושר' (Test-OtzDataRootOwnership (Join-Path $nestedParent 'otzaria')) $true
+
+    # shared_preferences.json הוא שם גנרי של Flutter: מוצר אחר תחת אותו
+    # CompanyName אינו הופך את ההורה — ואת עצמו — ליעד מחיקה.
+    $foreignSibling = New-Fixture 'CompanyRoot2' -Files @('OtherProduct\shared_preferences.json') -Directories @('otzaria')
+    Assert-Otz 'מוצר אחר תחת אותו CompanyName אינו מאשר את ההורה' (Test-OtzDataRootOwnership $foreignSibling) $false
+    Assert-Otz 'בן שרירותי אינו נסרק' (@(Get-OtzNestedDataRoots $foreignSibling).Count -eq 0) $true
 
     $dict = New-Fixture 'dictionaries-real' -Files @('dictionary.json')
     Assert-Otz 'תיקיית מילונים לפי dictionary.json' (Test-OtzDictionariesFolder $dict) $true

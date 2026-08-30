@@ -124,21 +124,33 @@ function Test-OtzDataRootMarkers {
     return (Test-OtzPathSafe (Join-Path $Path 'plugins\installed') -Container)
 }
 
+# שמות הבן של השורשים המקוננים ההיסטוריים
+# (%APPDATA%\<CompanyName>\<ProductName>) — רשימה סגורה, לא סריקה של כל בן.
+$script:OtzNestedDataRootNames = @('otzaria', 'אוצריא')
+
 # שורשי נתונים מקוננים: shared_preferences נכתב ל-
 # %APPDATA%\<CompanyName>\<ProductName>, ולכן השורש האמיתי יושב עומק אחד
-# פנימה — למשל %APPDATA%\אוצריא\אוצריא.
+# פנימה — %APPDATA%\אוצריא\אוצריא.
+#
+# הבן נסרק אך ורק בשמות המוצר המדויקים, ורק כדי לקרוא ממנו את ההעדפות.
+# בן שרירותי אינו נסרק ואינו מאשר דבר: shared_preferences.json הוא שם גנרי
+# של Flutter, ומוצר אחר תחת אותו CompanyName היה הופך למחיקת האב כולו.
+$script:OtzariaProductFolderNames = @('otzaria', 'אוצריא')
+
 function Get-OtzNestedDataRoots {
     param([string]$Path)
     if (-not (Test-OtzPathSafe $Path -Container)) { return }
-    Get-ChildItem -LiteralPath $Path -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
-        if (Test-OtzDataRootMarkers $_.FullName) { $_.FullName }
+    foreach ($name in $script:OtzariaProductFolderNames) {
+        $child = Join-Path $Path $name
+        if ((Test-OtzPathSafe $child -Container) -and (Test-OtzDataRootMarkers $child)) { $child }
     }
 }
 
+# שורש נתונים מאושר אך ורק לפי סימנים שנמצאים בו ישירות. השורשים המקוננים
+# ההיסטוריים הם יעדים נפרדים במלאי, ולא נגזרים מהאב.
 function Test-OtzDataRootOwnership {
     param([string]$Path)
-    if (Test-OtzDataRootMarkers $Path) { return $true }
-    return (@(Get-OtzNestedDataRoots $Path).Count -gt 0)
+    return (Test-OtzDataRootMarkers $Path)
 }
 
 # תיקיית מילונים — קבצי המילון שאוצריא מורידה. 'dictionaries' הוא שם גנרי.
@@ -578,7 +590,9 @@ function Get-OtzOtherProfileFindings {
     $relatives = @(
         @{ Path = 'AppData\Roaming\otzaria'; Group = 'data'; Own = 'dataroot' },
         @{ Path = 'AppData\Roaming\אוצריא'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Roaming\אוצריא\אוצריא'; Group = 'data'; Own = 'dataroot' },
         @{ Path = 'AppData\Roaming\Otzaria'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Roaming\Otzaria\otzaria'; Group = 'data'; Own = 'dataroot' },
         @{ Path = 'AppData\Roaming\com.example\otzaria'; Group = 'data'; Own = 'dataroot' },
         @{ Path = 'AppData\Local\otzaria'; Group = 'data'; Own = 'dataroot' },
         @{ Path = 'AppData\Local\אוצריא'; Group = 'data'; Own = 'dataroot' },
@@ -626,7 +640,9 @@ function Get-OtzOtherProfileDataRoots {
         if ([System.IO.Path]::GetFullPath($profileDir.FullName) -eq $currentProfile) { return }
         if ($profileDir.Name -in @('Public', 'Default', 'Default User', 'All Users')) { return }
         foreach ($relative in @('AppData\Roaming\otzaria', 'AppData\Roaming\אוצריא',
-                                'AppData\Roaming\Otzaria', 'AppData\Roaming\com.example\otzaria',
+                                'AppData\Roaming\אוצריא\אוצריא',
+                                'AppData\Roaming\Otzaria', 'AppData\Roaming\Otzaria\otzaria',
+                                'AppData\Roaming\com.example\otzaria',
                                 'AppData\Local\otzaria', 'AppData\Local\אוצריא',
                                 'Documents\otzaria')) {
             $candidate = Join-Path $profileDir.FullName $relative

@@ -10,17 +10,19 @@
 
 | היעד | מבחן הבעלות |
 |---|---|
-| תיקיית התקנה | `otzaria.exe` **וגם** `data\flutter_assets` שלצידו |
+| תיקיית התקנה | `otzaria.exe` **יחד עם** `data\flutter_assets` שלצידו, או `system_install.marker` / `portable.marker` שנשארו משארית התקנה. **`otzaria.exe` לבדו אינו סימן** — build artifact שהונח בריפו המקור נראה זהה. **`unins000.exe` אינו סימן** — הוא של Inno Setup ומופיע בכל תוכנה שנארזה בו |
+| שורש נתונים | `library_loaded.marker` / `library_path.txt` / `shared_preferences.json` / `per_book_settings` / `webview2` / קובץ `*.hive` / `plugins\installed`. תת-תיקייה בשם גנרי (`books`, `index`, `databases`) נחשבת רק אם היא עצמה עוברת את מבחן הבעלות שלה. **רק סימנים שנמצאים בתיקייה עצמה** — בן שרירותי אינו מאשר את האב, כי `shared_preferences.json` הוא שם גנרי של Flutter ומוצר אחר תחת אותו `CompanyName` היה גורם למחיקת האב כולו |
 | תיקיית ספרים | `seforim.db` או `otzar-HB_catalog.db` או `תלמוד בבלי` — אותם סימנים כמו `IsOtzariaBooksFolder` במתקין הרשמי |
 | תיקיית אינדקס | `meta.json` / `tantivy.lock` / `.tantivy-writer.lock` |
-| תיקיית מסדי נתונים | `seforim.db` / `cache.db` / `otzaria_lexical.db` |
+| תיקיית מסדי נתונים | `seforim.db` / `cache.db` / `otzaria_lexical.db` / `lexical.db` / `user_books.db` / `plugins_host.db` / `personal_notes.db` / `talmud_synopsis_pooled.db` |
+| תיקיית מילונים | `dictionary.json` / `Acronyms.json` / קובץ מילון — `dictionaries` הוא שם גנרי |
 | קיצור | ה-`TargetPath` הוא EXE של אוצריא, או שהפרמטרים מכילים `otzaria://` — **לא** שם הקיצור |
 | רכיב `PATH` | התיקייה עוברת את מבחן תיקיית ההתקנה; רכיב יתום שכבר נמחק מזוהה רק בשם תיקייה מדויק (`Otzaria` / `אוצריא`) |
 | כלל חומת אש | נתיב התוכנית בכלל — **לא** שם הכלל |
 | משימה מתוזמנת | ה-EXE שהיא מריצה; כשהיא מריצה מפעיל כללי (`powershell.exe`), הסקריפט שבפרמטרים חייב לשבת בתיקיית רכיב בשם מדויק |
 | התקנה ניידת | `portable.marker` **וגם** תיקיית התקנה מלאה |
 | קובץ `otzaria.exe` קיים | תיקיית התקנה סביבו, או `ProductName`/`CompanyName` של אוצריא במשאבי הקובץ. שם הקובץ לבדו מספיק רק כשהקובץ כבר נמחק (שארית) |
-| `InstallLocation` של רשומת הסרה | מבחן תיקיית ההתקנה — רשומת ההסרה עצמה מזוהה ב-substring, ולכן היעד חייב להוכיח את עצמו |
+| רשומת הסרה שמורצת | ה-AppId של אוצריא, תיקיית התקנה מוכחת, או תיקייה בשם רכיב מדויק (`Otzaria Plugin Store`, `OtzariaDesktop`) — **לפני** ההרצה, שהיא בלתי הפיכה. שם התצוגה אינו קובע: מוצר אחר ששמו מתחיל ב-"Otzaria" לא יורץ |
 
 שם היעד עצמו אינו מספיק גם כשהוא נראה ייחודי: **Windows אינו מבחין ברישיות**, ולכן
 הנתיב ההיסטורי `C:\Otzaria` שבמלאי מצביע גם על ריפו קוד המקור `C:\otzaria`. הריפו נפסל
@@ -58,7 +60,7 @@ substring, והנזק המרבי הוא מחיקת רשומת שימוש של ת
 |---|---|
 | `%APPDATA%\otzaria` | שורש הנתונים הנוכחי |
 | `%APPDATA%\אוצריא` | `shared_preferences` נכתב ל-`%APPDATA%\<CompanyName>\<ProductName>`; ב-`windows/runner/Runner.rc` שני השדות היו `אוצריא` |
-| `%APPDATA%\אוצריא\אוצריא` | השורש המקונן עצמו — מופיע גם ב-`installer/reset_settings.ps1` שבמאגר של אוצריא |
+| `%APPDATA%\אוצריא\אוצריא` | השורש המקונן — **יעד נפרד במלאי**, לא נגזרת של האב. מופיע גם ב-`installer/reset_settings.ps1` שבמאגר של אוצריא |
 | `%APPDATA%\Otzaria\otzaria` | אותו מבנה בגרסאות שבהן ה-`CompanyName` היה `Otzaria` |
 | `%APPDATA%\Otzaria` | `CompanyName` בגרסאות הביניים |
 | `%APPDATA%\com.example\otzaria` | `CompanyName` בגרסאות המוקדמות (ברירת המחדל של Flutter) |
@@ -71,6 +73,9 @@ substring, והנזק המרבי הוא מחיקת רשומת שימוש של ת
 `DeleteUserDataInAllProfiles` שבמתקין: בהסרת התקנת מנהל, מי שמריץ אינו בהכרח מי
 שהתקין. גם ה-`library_path.txt` וההעדפות שלהם נקראים — מכל שורשי הנתונים ההיסטוריים,
 לא רק מהנוכחי — כדי שספרייה שהם העבירו לכונן אחר לא תישאר מאחור.
+
+שורש מקונן נסרק לקריאת ההעדפות **רק בשם המוצר המדויק** (`otzaria` / `אוצריא`),
+ולא בכל תיקיית-בן.
 
 **כל יעד בפרופיל אחר עובר את אותם מבחני בעלות** של המלאי הקבוע: לפרופיל של משתמש אחר
 עלולה להיות תיקייה בשם זהה שאינה של אוצריא — ריפו מקור, תיקיית עבודה.
