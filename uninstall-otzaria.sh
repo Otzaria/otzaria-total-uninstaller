@@ -87,7 +87,11 @@ is_index_folder() {
 is_databases_folder() {
     local path="${1:-}"
     [ -n "$path" ] && [ -d "$path" ] || return 1
-    [ -f "$path/seforim.db" ] || [ -f "$path/cache.db" ] || [ -f "$path/otzaria_lexical.db" ]
+    local name
+    for name in seforim.db cache.db otzaria_lexical.db lexical.db user_books.db                 plugins_host.db personal_notes.db talmud_synopsis_pooled.db; do
+        [ -f "$path/$name" ] && return 0
+    done
+    return 1
 }
 
 # תיקיית התקנה — קובץ ההרצה וחבילת ה-assets של Flutter שלצידו.
@@ -96,6 +100,27 @@ is_install_dir() {
     [ -n "$path" ] && [ -d "$path" ] || return 1
     [ -f "$path/otzaria" ] && [ -d "$path/data/flutter_assets" ]
 }
+
+# שורש נתונים — מבנה העבודה שאוצריא יוצרת. שם התיקייה לבדו אינו מספיק.
+is_data_root() {
+    local path="${1:-}"
+    [ -n "$path" ] && [ -d "$path" ] || return 1
+    local marker
+    for marker in library_loaded.marker library_path.txt shared_preferences.json books index databases plugins per_book_settings; do
+        [ -e "$path/$marker" ] && return 0
+    done
+    ls "$path"/*.hive >/dev/null 2>&1
+}
+
+# יעד קבוע שנמחק כתיקייה שלמה חייב להוכיח בעלות — התקנה או שורש נתונים.
+add_owned_dir() {
+    local group="$1" path="$2"
+    is_install_dir "$path" || is_data_root "$path" || return 0
+    add "$group" "$path"
+}
+
+# נקודת עצירה לבדיקות: טוען את מבחני הבעלות בלבד.
+[ "${OTZARIA_UNINSTALLER_LIB_ONLY:-0}" = "1" ] && return 0 2>/dev/null
 
 # קריאת ערך מ-shared_preferences.json בלי jq — אותה גישה של המתקין הרשמי.
 pref_value() {
@@ -109,15 +134,15 @@ DATA_ROOTS=()
 
 if [ "$OS" = "Darwin" ]; then
     # שם היישום הוא PRODUCT_NAME שב-AppInfo.xcconfig — עברי בגרסאות הנוכחיות.
-    for app_name in "אוצריא.app" "Otzaria.app"; do
+    for app_name in "אוצריא.app" "Otzaria.app" "otzaria.app"; do
         add app "/Applications/$app_name"
         add app "$HOME/Applications/$app_name"
     done
     DATA_ROOTS+=("$HOME/Library/Application Support/otzaria")
-    add data "$HOME/Library/Application Support/otzaria"
-    add data "$HOME/Library/Application Support/אוצריא"
-    add data "/Library/Application Support/otzaria"
-    add data "/Library/Application Support/Otzaria"
+    add_owned_dir data "$HOME/Library/Application Support/otzaria"
+    add_owned_dir data "$HOME/Library/Application Support/אוצריא"
+    add_owned_dir data "/Library/Application Support/otzaria"
+    add_owned_dir data "/Library/Application Support/Otzaria"
     # מזהי החבילה לאורך הדורות
     for bundle in com.example.otzaria com.mendelg.otzaria org.otzaria.otzaria; do
         add app "$HOME/Library/Preferences/$bundle.plist"
@@ -129,18 +154,18 @@ if [ "$OS" = "Darwin" ]; then
     add backups "$HOME/Documents/אוצריא - גיבויים"
     add backups "$HOME/Documents/OtzariaBackups"
 else
-    add app "/opt/otzaria"
-    add app "/usr/local/otzaria"
+    add_owned_dir app "/opt/otzaria"
+    add_owned_dir app "/usr/local/otzaria"
     add app "/usr/local/bin/otzaria"
     add app "/usr/bin/otzaria"
     add app "/usr/share/applications/otzaria.desktop"
     add app "$HOME/.local/share/applications/otzaria.desktop"
     add app "$HOME/.local/share/mime/packages/otzaria-plugin.xml"
     DATA_ROOTS+=("$HOME/.local/share/otzaria")
-    add data "$HOME/.local/share/otzaria"
-    add data "$HOME/.config/otzaria"
-    add data "$HOME/.cache/otzaria"
-    add library "/var/lib/otzaria"
+    add_owned_dir data "$HOME/.local/share/otzaria"
+    add_owned_dir data "$HOME/.config/otzaria"
+    add_owned_dir data "$HOME/.cache/otzaria"
+    add_owned_dir library "/var/lib/otzaria"
     add backups "$HOME/Documents/אוצריא - גיבויים"
     add backups "$HOME/Documents/OtzariaBackups"
     # אייקון ה-MIME של קובצי ‎.otzplugin‎ בכל גודל תמה שהותקן
@@ -193,7 +218,7 @@ for root in ${DATA_ROOTS+"${DATA_ROOTS[@]}"}; do
     if [ -n "$backup_path" ] && [ -d "$backup_path" ]; then
         while IFS= read -r backup_file; do
             add backups "$backup_file"
-        done < <(find "$backup_path" -maxdepth 1 \( -name 'otzaria_backup_*' -o -name 'otzaria_archive.json' -o -name 'otzaria_db_backup_*' \) 2>/dev/null)
+        done < <(find "$backup_path" -maxdepth 1 -type f \( -name 'otzaria_backup_*' -o -name 'otzaria_archive.json' -o -name 'otzaria_db_backup_*' \) 2>/dev/null)
     fi
 done
 

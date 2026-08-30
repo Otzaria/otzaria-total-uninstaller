@@ -25,6 +25,10 @@ function New-OtzTarget {
         [Parameter(Mandatory)][ValidateSet('app', 'data', 'library', 'backups', 'related', 'traces', 'userfiles')][string]$Group,
         [ValidateSet('User', 'Machine')][string]$Scope = 'User',
         [ValidateSet('Default', 'Both')][string]$View = 'Default',
+        # מבחן הבעלות שהיעד חייב לעבור לפני מחיקה. 'none' מותר רק כששם היעד
+        # עצמו ייחודי לאוצריא ואינו יכול להתנגש עם תיקייה של המשתמש.
+        [ValidateSet('none', 'install', 'dataroot')][string]$Own = 'none',
+        [string[]]$Marker,
         [string]$Match,
         [string]$Note = ''
     )
@@ -35,6 +39,8 @@ function New-OtzTarget {
         Group = $Group
         Scope = $Scope
         View  = $View
+        Own   = $Own
+        Marker = $Marker
         Match = $Match
         Note  = $Note
     }
@@ -55,38 +61,38 @@ function Get-OtzariaInventory {
     $docs  = Join-Path $up 'Documents'
 
     # ── תיקיות התקנה ────────────────────────────────────────────────────────
-    New-OtzTarget -Id 'install.pf.en' -Kind Path -Group app -Scope Machine -Target (Join-Path $pf 'Otzaria') -Note 'התקנת מנהל (ברירת המחדל הנוכחית)'
-    New-OtzTarget -Id 'install.pf.he' -Kind Path -Group app -Scope Machine -Target (Join-Path $pf $heb) -Note 'התקנת מנהל בשם עברי (גרסאות ישנות)'
+    New-OtzTarget -Id 'install.pf.en' -Kind Path -Own install -Group app -Scope Machine -Target (Join-Path $pf 'Otzaria') -Note 'התקנת מנהל (ברירת המחדל הנוכחית)'
+    New-OtzTarget -Id 'install.pf.he' -Kind Path -Own install -Group app -Scope Machine -Target (Join-Path $pf $heb) -Note 'התקנת מנהל בשם עברי (גרסאות ישנות)'
     if ($pf86) {
-        New-OtzTarget -Id 'install.pf86.en' -Kind Path -Group app -Scope Machine -Target (Join-Path $pf86 'Otzaria')
-        New-OtzTarget -Id 'install.pf86.he' -Kind Path -Group app -Scope Machine -Target (Join-Path $pf86 $heb)
+        New-OtzTarget -Id 'install.pf86.en' -Kind Path -Own install -Group app -Scope Machine -Target (Join-Path $pf86 'Otzaria')
+        New-OtzTarget -Id 'install.pf86.he' -Kind Path -Own install -Group app -Scope Machine -Target (Join-Path $pf86 $heb)
     }
-    New-OtzTarget -Id 'install.rootdrive.he' -Kind Path -Group app -Scope Machine -Target (Join-Path "$env:SystemDrive\" $heb) -Note 'נתיב התקנה ישן בשורש הכונן'
-    New-OtzTarget -Id 'install.rootdrive.en' -Kind Path -Group app -Scope Machine -Target (Join-Path "$env:SystemDrive\" 'Otzaria') -Note 'ברירת המחדל עד commit c5a1ebd44 — C:\Otzaria'
-    New-OtzTarget -Id 'install.peruser.en' -Kind Path -Group app -Target (Join-Path $lad 'Programs\Otzaria') -Note 'התקנת משתמש'
-    New-OtzTarget -Id 'install.peruser.he' -Kind Path -Group app -Target (Join-Path $lad "Programs\$heb")
+    New-OtzTarget -Id 'install.rootdrive.he' -Kind Path -Own install -Group app -Scope Machine -Target (Join-Path "$env:SystemDrive\" $heb) -Note 'נתיב התקנה ישן בשורש הכונן'
+    New-OtzTarget -Id 'install.rootdrive.en' -Kind Path -Own install -Group app -Scope Machine -Target (Join-Path "$env:SystemDrive\" 'Otzaria') -Note 'ברירת המחדל עד commit c5a1ebd44 — C:\Otzaria'
+    New-OtzTarget -Id 'install.peruser.en' -Kind Path -Own install -Group app -Target (Join-Path $lad 'Programs\Otzaria') -Note 'התקנת משתמש'
+    New-OtzTarget -Id 'install.peruser.he' -Kind Path -Own install -Group app -Target (Join-Path $lad "Programs\$heb")
 
     # ── שורשי נתונים (AppPaths.getDataRootPath לאורך הדורות) ────────────────
-    New-OtzTarget -Id 'data.roaming' -Kind Path -Group data -Target (Join-Path $rad 'otzaria') -Note 'שורש הנתונים הנוכחי: hive, תוספים, webview2, logs'
-    New-OtzTarget -Id 'data.roaming.he' -Kind Path -Group data -Target (Join-Path $rad $heb) -Note 'shared_preferences ישן (CompanyName עברי)'
-    New-OtzTarget -Id 'data.roaming.cap' -Kind Path -Group data -Target (Join-Path $rad 'Otzaria') -Note 'CompanyName "Otzaria" (גרסאות ביניים)'
-    New-OtzTarget -Id 'data.roaming.example' -Kind Path -Group data -Target (Join-Path $rad 'com.example\otzaria') -Note 'CompanyName "com.example" (גרסאות מוקדמות)'
-    New-OtzTarget -Id 'data.local' -Kind Path -Group data -Target (Join-Path $lad 'otzaria')
-    New-OtzTarget -Id 'data.local.he' -Kind Path -Group data -Target (Join-Path $lad $heb) -Note 'נתיב legacy שהמתקין הרשמי עדיין מנקה'
-    New-OtzTarget -Id 'data.programdata' -Kind Path -Group data -Scope Machine -Target (Join-Path $pd 'otzaria') -Note 'נתוני התקנת מנהל — כולל books ו-index'
-    New-OtzTarget -Id 'data.docs' -Kind Path -Group data -Target (Join-Path $docs 'otzaria') -Note 'שורש ישן בתיקיית המסמכים'
-    New-OtzTarget -Id 'data.docs.he' -Kind Path -Group library -Target (Join-Path $docs $heb)
+    New-OtzTarget -Id 'data.roaming' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad 'otzaria') -Note 'שורש הנתונים הנוכחי: hive, תוספים, webview2, logs'
+    New-OtzTarget -Id 'data.roaming.he' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad $heb) -Note 'shared_preferences ישן (CompanyName עברי)'
+    New-OtzTarget -Id 'data.roaming.cap' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad 'Otzaria') -Note 'CompanyName "Otzaria" (גרסאות ביניים)'
+    New-OtzTarget -Id 'data.roaming.example' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad 'com.example\otzaria') -Note 'CompanyName "com.example" (גרסאות מוקדמות)'
+    New-OtzTarget -Id 'data.local' -Kind Path -Own dataroot -Group data -Target (Join-Path $lad 'otzaria')
+    New-OtzTarget -Id 'data.local.he' -Kind Path -Own dataroot -Group data -Target (Join-Path $lad $heb) -Note 'נתיב legacy שהמתקין הרשמי עדיין מנקה'
+    New-OtzTarget -Id 'data.programdata' -Kind Path -Own dataroot -Group data -Scope Machine -Target (Join-Path $pd 'otzaria') -Note 'נתוני התקנת מנהל — כולל books ו-index'
+    New-OtzTarget -Id 'data.docs' -Kind Path -Own dataroot -Group data -Target (Join-Path $docs 'otzaria') -Note 'שורש ישן בתיקיית המסמכים'
+    New-OtzTarget -Id 'data.docs.he' -Kind Path -Own dataroot -Group library -Target (Join-Path $docs $heb)
 
     # ── גיבויים ─────────────────────────────────────────────────────────────
     New-OtzTarget -Id 'backups.docs' -Kind Path -Group backups -Target (Join-Path $docs "$heb - גיבויים") -Note 'תיקיית הגיבויים בברירת המחדל'
     New-OtzTarget -Id 'backups.docs.legacy' -Kind Path -Group backups -Target (Join-Path $docs 'OtzariaBackups') -Note 'נתיב הגיבויים עד commit 0de51c8fc'
 
     # ── רכיבים נלווים ───────────────────────────────────────────────────────
-    New-OtzTarget -Id 'store.app' -Kind Path -Group related -Target (Join-Path $lad 'Otzaria Plugin Store') -Note 'אפליקציית חנות התוספים'
-    New-OtzTarget -Id 'store.webview' -Kind Path -Group related -Target (Join-Path $lad 'com.otzaria.store') -Note 'פרופיל WebView2 של החנות'
-    New-OtzTarget -Id 'store.roaming' -Kind Path -Group related -Target (Join-Path $rad 'Otzaria Plugin Store')
-    New-OtzTarget -Id 'desktop.agent' -Kind Path -Group related -Scope Machine -Target (Join-Path $pd 'OtzariaDesktop') -Note 'OtzariaDesktop — סוכן/שרת נלווה'
-    New-OtzTarget -Id 'desktop.agent.root' -Kind Path -Group related -Scope Machine -Target (Join-Path "$env:SystemDrive\" 'OtzariaDesktop') -Note 'אותו סוכן בשורש הכונן'
+    New-OtzTarget -Id 'store.app' -Kind Path -Group related -Marker @('app.exe', 'uninstall.exe') -Target (Join-Path $lad 'Otzaria Plugin Store') -Note 'אפליקציית חנות התוספים'
+    New-OtzTarget -Id 'store.webview' -Kind Path -Group related -Marker @('EBWebView') -Target (Join-Path $lad 'com.otzaria.store') -Note 'פרופיל WebView2 של החנות'
+    New-OtzTarget -Id 'store.roaming' -Kind Path -Group related -Marker @('app.exe', 'EBWebView', 'config.json') -Target (Join-Path $rad 'Otzaria Plugin Store')
+    New-OtzTarget -Id 'desktop.agent' -Kind Path -Group related -Marker @('config.json', 'start_desktop.ps1', 'noVNC') -Scope Machine -Target (Join-Path $pd 'OtzariaDesktop') -Note 'OtzariaDesktop — סוכן/שרת נלווה'
+    New-OtzTarget -Id 'desktop.agent.root' -Kind Path -Group related -Marker @('config.json', 'start_desktop.ps1', 'noVNC') -Scope Machine -Target (Join-Path "$env:SystemDrive\" 'OtzariaDesktop') -Note 'אותו סוכן בשורש הכונן'
 
     # ── קבצים זמניים ────────────────────────────────────────────────────────
     foreach ($pattern in @('otzaria*', 'otz_plugin*', 'otzaria_update', 'otzaria_plugin_uploads', 'otzaria_temp_index_*', 'otzaria-settings-*')) {

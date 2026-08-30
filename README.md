@@ -8,9 +8,10 @@
 הכלי אינו נוגע בשום רכיב שהמחשב זקוק לו לתפעולו, ואינו מוחק קבצים שהמשתמש יצר בעצמו
 אלא בבקשה מפורשת.
 
-**כלל הבעלות:** שם שמכיל "otzaria" אינו מספיק. כל תיקייה שנמחקת חייבת להוכיח בעלות —
-`otzaria.exe` עם חבילת ה-assets שלצידו, `seforim.db` בתיקיית ספרים, וכן הלאה. תיקיית
-פיתוח, קיצור או משימה ששמם מכיל "otzaria" בלבד לא ייגעו. הפירוט המלא ב-
+**כלל הבעלות:** שם שמכיל "otzaria" אינו מספיק — גם לא שם היעד עצמו. כל תיקייה שנמחקת
+חייבת להוכיח בעלות: `otzaria.exe` עם חבילת ה-assets שלצידו, `seforim.db` בתיקיית ספרים,
+קובץ `.hive` בשורש נתונים, וכן הלאה. ריפו קוד המקור `C:\otzaria` — ש-Windows רואה כזהה
+לנתיב ההתקנה ההיסטורי `C:\Otzaria` — נפסל, וזו בדיקה אוטומטית. הפירוט המלא ב-
 [docs/INVENTORY.md](docs/INVENTORY.md#כלל-הבעלות).
 
 ## Windows
@@ -94,7 +95,18 @@ Uninstall-Otzaria.ps1      הכלי ל-Windows — מנוע, דיווח ומחי
 lib/OtzariaInventory.ps1   המלאי הקבוע: נתיבים ומפתחות רישום
 lib/OtzariaScanners.ps1    סורקים דינמיים: קיצורים, PATH, חומת אש, משימות, ספרייה
 uninstall-otzaria.sh       הכלי ל-Linux ול-macOS
+tests/                     בדיקות בטיחות למבחני הבעלות
 docs/INVENTORY.md          תיעוד כל יעד ומקורו
+```
+
+## בדיקות
+
+```bash
+powershell -ExecutionPolicy Bypass -File .	ests\Test-Ownership.ps1
+```
+
+```bash
+bash tests/test-ownership.sh
 ```
 
 ## אזהרה

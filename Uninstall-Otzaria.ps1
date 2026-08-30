@@ -150,6 +150,26 @@ function Split-OtzRegistryPath {
 
 # ─────────────────────── בניית הממצאים ───────────────────────
 
+# שם היעד לבדו אינו מספיק: Windows אינו מבחין ברישיות, ולכן `C:\Otzaria`
+# שבמלאי מצביע גם על ריפו קוד המקור `C:\otzaria`. מטרה נמחקת רק אחרי שהיא
+# מוכיחה שאוצריא יצרה אותה.
+function Test-OtzTargetOwnership {
+    param([Parameter(Mandatory)]$Target)
+
+    switch ($Target.Own) {
+        'install'  { return (Test-OtzInstallOwnership $Target.Target) }
+        'dataroot' { return (Test-OtzDataRootOwnership $Target.Target) }
+    }
+
+    if ($Target.Marker) {
+        foreach ($marker in $Target.Marker) {
+            if (Test-OtzPathSafe (Join-Path $Target.Target $marker)) { return $true }
+        }
+        return $false
+    }
+    return $true
+}
+
 function Expand-OtzTarget {
     param([Parameter(Mandatory)]$Target, [string[]]$DataRoots)
 
@@ -157,6 +177,10 @@ function Expand-OtzTarget {
 
         'Path' {
             if (-not (Test-Path -LiteralPath $Target.Target)) { return }
+            if (-not (Test-OtzTargetOwnership $Target)) {
+                Write-Verbose "דילוג — לא עבר מבחן בעלות: $($Target.Target)"
+                return
+            }
             $path = $Target.Target
             $size = if (Test-Path -LiteralPath $path -PathType Container) { Get-OtzDirectorySize $path } else { (Get-Item -LiteralPath $path).Length }
             New-OtzFinding -Id $Target.Id -Group $Target.Group -Kind 'Directory' -Target $path -SizeBytes $size -Note $Target.Note -Remove {
@@ -312,8 +336,20 @@ function Get-OtzVendorUninstallers {
                         $display = [string]$sub.GetValue('DisplayName')
                         $uninstall = [string]$sub.GetValue('UninstallString')
                         $location = [string]$sub.GetValue('InstallLocation')
-                        $isOtzaria = (Test-OtzOtzariaPath $name) -or (Test-OtzOtzariaPath $display) -or
-                                     (Test-OtzOtzariaPath $uninstall) -or ($name -like '*EEC4F712*')
+                        # הרצת מסיר התקנה היא פעולה בלתי הפיכה, ולכן הזיהוי
+                        # אינו יכול להסתמך על substring: או ה-AppId של אוצריא,
+                        # או שם תצוגה שמתחיל בשמה, או תיקיית התקנה מוכחת.
+                        $uninstallDir = ''
+                        if ($uninstall) {
+                            $exePath = $uninstall.Trim().Trim('"').Split('"')[0]
+                            if ($exePath) { $uninstallDir = Split-Path -Parent $exePath }
+                        }
+                        $firstWord = ''
+                        if ($display) { $firstWord = $display.Trim().Split(' ')[0] }
+                        $isOtzaria = ($name -like '*EEC4F712*') -or
+                                     ($firstWord -in @('אוצריא', 'Otzaria')) -or
+                                     (Test-OtzInstallOwnership $location) -or
+                                     (Test-OtzInstallOwnership $uninstallDir)
                         if ($isOtzaria -and $uninstall) {
                             $results += [pscustomobject]@{
                                 Name = if ($display) { $display } else { $name }
@@ -433,6 +469,10 @@ $inventory = @(Get-OtzariaInventory)
 # שורשי הנתונים נאספים תחילה — מהם נקרא library_path.txt לפני שהם נמחקים.
 $dataRoots = @($inventory | Where-Object { $_.Kind -eq 'Path' -and $_.Group -in @('data', 'library') } |
     ForEach-Object { $_.Target } | Where-Object { Test-Path -LiteralPath $_ })
+if ($isAdmin) {
+    # גם ההעדפות של משתמשים אחרים — ספרייה שהם העבירו לכונן אחר לא תישאר.
+    $dataRoots += @(Get-OtzOtherProfileDataRoots)
+}
 
 $findings = New-Object System.Collections.Generic.List[object]
 foreach ($target in $inventory) {

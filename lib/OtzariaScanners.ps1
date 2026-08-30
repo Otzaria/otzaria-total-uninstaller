@@ -60,16 +60,34 @@ function Test-OtzInstallDirectory {
     return (Test-Path -LiteralPath (Join-Path $Path 'data\flutter_assets'))
 }
 
-# קובץ הרצה של אוצריא: או otzaria.exe עצמו, או EXE בשם גנרי שיושב בתיקיית
-# התקנה מזוהה (חנות התוספים מריצה app.exe).
+# תיקיית התקנה או שארית שלה: גם אחרי מחיקת ה-EXE נשארים סימני מתקין. משמש
+# למטרות המלאי, ששמן לבדו ("Otzaria") עלול להתנגש עם תיקייה של המשתמש —
+# למשל ריפו קוד המקור, ש-Windows רואה כזהה לנתיב ההתקנה ההיסטורי.
+function Test-OtzInstallOwnership {
+    param([string]$Path)
+    if (Test-OtzInstallDirectory $Path) { return $true }
+    if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+    # unins000.exe אינו סימן: הוא של Inno Setup, ומופיע בכל תוכנה שנארזה בו.
+    foreach ($marker in @('otzaria.exe', 'system_install.marker', 'portable.marker')) {
+        if (Test-OtzPathSafe (Join-Path $Path $marker)) { return $true }
+    }
+    return $false
+}
+
+# קובץ הרצה של אוצריא. שם הקובץ לבדו אינו מספיק כשהקובץ קיים — נדרשת תיקיית
+# התקנה סביבו או פרטי גרסה של אוצריא. קובץ שכבר נמחק מתקבל כשארית.
 function Test-OtzOwnedExecutable {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
-    if ((Split-Path -Leaf $Path) -eq 'otzaria.exe') { return $true }
     $dir = Split-Path -Parent $Path
-    if ([string]::IsNullOrWhiteSpace($dir)) { return $false }
-    if (Test-OtzInstallDirectory $dir) { return $true }
-    return ((Split-Path -Leaf $dir) -eq 'Otzaria Plugin Store')
+    if ($dir -and (Test-OtzInstallDirectory $dir)) { return $true }
+    if ($dir -and (Split-Path -Leaf $dir) -eq 'Otzaria Plugin Store') { return $true }
+    if ((Split-Path -Leaf $Path) -ne 'otzaria.exe') { return $false }
+    if (-not (Test-OtzPathSafe $Path)) { return $true }
+    try {
+        $info = (Get-Item -LiteralPath $Path -ErrorAction Stop).VersionInfo
+        return ((Test-OtzOtzariaPath $info.ProductName) -or (Test-OtzOtzariaPath $info.CompanyName))
+    } catch { return $false }
 }
 
 # קובץ ששייך לרכיב של אוצריא: ההורה שלו הוא תיקייה ייעודית בשם מדויק —
@@ -80,6 +98,19 @@ function Test-OtzOwnedComponentPath {
     $dir = Split-Path -Parent $Path
     if ([string]::IsNullOrWhiteSpace($dir)) { return $false }
     return ((Split-Path -Leaf $dir) -in @('OtzariaDesktop', 'Otzaria', 'אוצריא', 'Otzaria Plugin Store'))
+}
+
+# שורש נתונים: תיקייה שאוצריא יצרה בה את מבנה העבודה שלה. שם התיקייה לבדו
+# ("otzaria") אינו מספיק — הוא מתנגש עם תיקיות עבודה של המשתמש.
+function Test-OtzDataRootOwnership {
+    param([string]$Path)
+    if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+    foreach ($marker in @('library_loaded.marker', 'library_path.txt', 'shared_preferences.json',
+                          'books', 'index', 'databases', 'plugins', 'per_book_settings', 'webview2')) {
+        if (Test-OtzPathSafe (Join-Path $Path $marker)) { return $true }
+    }
+    return ((Get-ChildItem -LiteralPath $Path -Filter '*.hive' -Force -ErrorAction SilentlyContinue |
+        Select-Object -First 1) -ne $null)
 }
 
 # תיקיית ספרים — אותם סימנים שהמתקין הרשמי בודק ב-IsOtzariaBooksFolder,
@@ -106,9 +137,31 @@ function Test-OtzDatabasesFolder {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path) -or $Path.Length -lt 6) { return $false }
     if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
-    return ((Test-OtzPathSafe (Join-Path $Path 'seforim.db')) -or
-            (Test-OtzPathSafe (Join-Path $Path 'cache.db')) -or
-            (Test-OtzPathSafe (Join-Path $Path 'otzaria_lexical.db')))
+    foreach ($name in @('seforim.db', 'cache.db', 'otzaria_lexical.db', 'lexical.db',
+                        'user_books.db', 'plugins_host.db', 'personal_notes.db',
+                        'talmud_synopsis_pooled.db')) {
+        if (Test-OtzPathSafe (Join-Path $Path $name)) { return $true }
+    }
+    return $false
+}
+
+# תיקייה מוכרת של המשתמש (Documents, Downloads, פרופיל, OneDrive) — גם אם
+# המשתמש הצביע לשם כשורש הספרייה, אסור למחוק ממנה תיקיות בשמות גנריים.
+function Test-OtzWellKnownUserFolder {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $true }
+    $normalized = $Path.TrimEnd('\')
+    $known = @(
+        $env:USERPROFILE, $env:PUBLIC, $env:APPDATA, $env:LOCALAPPDATA, $env:ProgramData,
+        $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:SystemRoot, $env:OneDrive,
+        (Join-Path $env:USERPROFILE 'Documents'), (Join-Path $env:USERPROFILE 'Downloads'),
+        (Join-Path $env:USERPROFILE 'Desktop'), (Join-Path $env:USERPROFILE 'Pictures'),
+        (Join-Path $env:USERPROFILE 'Music'), (Join-Path $env:USERPROFILE 'Videos')
+    ) | Where-Object { $_ }
+    foreach ($folder in $known) {
+        if ($normalized -eq $folder.TrimEnd('\')) { return $true }
+    }
+    return $false
 }
 
 # ── קיצורי דרך ──────────────────────────────────────────────────────────────
@@ -356,7 +409,8 @@ function Get-OtzCustomLibraryFindings {
 
     # תיקיות שאוצריא יוצרת בשורש הספרייה. השורש עצמו לעולם אינו נמחק —
     # ייתכן שהמשתמש בחר תיקייה שיש בה עוד תוכן שלו.
-    $ownedNames = @('books', 'index', 'databases', 'dictionaries', 'library_update_cache',
+    # 'index' ו-'databases' הם שמות גנריים ולכן נבדקים בנפרד; השאר ייחודיים.
+    $ownedNames = @('books', 'dictionaries', 'library_update_cache',
                     'pdfium', 'per_book_settings', '.otzaria-books-backup', '.otzaria-index-backup')
     $seen = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
 
@@ -389,9 +443,18 @@ function Get-OtzCustomLibraryFindings {
             $libRoot = if ((Split-Path -Leaf $libPath) -eq 'books') { Split-Path -Parent $libPath } else { $libPath }
 
             # מבחן הבעלות של המתקין הרשמי: בלעדיו לא נוגעים בנתיב מההגדרות.
-            if ((Test-OtzBooksFolder $booksPath) -or (Test-OtzBooksFolder $libPath)) {
+            if (((Test-OtzBooksFolder $booksPath) -or (Test-OtzBooksFolder $libPath)) -and
+                -not (Test-OtzWellKnownUserFolder $libRoot)) {
                 foreach ($name in $ownedNames) {
                     Add-OwnedDirectory -Candidate (Join-Path $libRoot $name) -Source "ספרייה מותאמת, לפי $root"
+                }
+                $siblingIndex = Join-Path $libRoot 'index'
+                if (Test-OtzIndexFolder $siblingIndex) {
+                    Add-OwnedDirectory -Candidate $siblingIndex -Source "ספרייה מותאמת, לפי $root"
+                }
+                $siblingDb = Join-Path $libRoot 'databases'
+                if (Test-OtzDatabasesFolder $siblingDb) {
+                    Add-OwnedDirectory -Candidate $siblingDb -Source "ספרייה מותאמת, לפי $root"
                 }
             }
         }
@@ -459,6 +522,24 @@ function Get-OtzOtherProfileFindings {
                 -Note "פרופיל $($profileDir.Name)" -Remove {
                 Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
             }.GetNewClosure()
+        }
+    }
+}
+
+# שורשי הנתונים של משתמשים אחרים, כדי שגם ה-library_path.txt וההעדפות שלהם
+# ייקראו ולא רק תיקיית השורש תימחק.
+function Get-OtzOtherProfileDataRoots {
+    $profilesRoot = Split-Path -Parent $env:USERPROFILE
+    if (-not (Test-OtzPathSafe $profilesRoot -Container)) { return }
+    $currentProfile = [System.IO.Path]::GetFullPath($env:USERPROFILE)
+
+    Get-ChildItem -LiteralPath $profilesRoot -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $profileDir = $_
+        if ([System.IO.Path]::GetFullPath($profileDir.FullName) -eq $currentProfile) { return }
+        if ($profileDir.Name -in @('Public', 'Default', 'Default User', 'All Users')) { return }
+        foreach ($relative in @('AppData\Roaming\otzaria', 'AppData\Local\otzaria', 'Documents\otzaria')) {
+            $candidate = Join-Path $profileDir.FullName $relative
+            if (Test-OtzPathSafe $candidate -Container) { $candidate }
         }
     }
 }
