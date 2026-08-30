@@ -91,24 +91,20 @@ jobs:
             echo '> הריצו תחילה בלי `-Remove`, קראו את הרשימה, ורק אז הסירו.'
             echo '> `-KeepLibrary` משאיר את הספרים, `-KeepData` את ההגדרות וההערות.'
             echo
-            # הפקודה בשורה אחת: ציטוט כפול עם \$ כדי שסימני ה-$ של PowerShell יגיעו כלשונם.
-            zip_url='https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/${{ steps.version.outputs.name }}.zip'
-            oneliner="Set-ExecutionPolicy Bypass -Scope Process -Force; \$t=Join-Path \$env:TEMP 'otzaria-uninstall'; Remove-Item \$t,\"\$t.zip\" -Recurse -Force -ErrorAction SilentlyContinue; Invoke-WebRequest '$zip_url' -OutFile \"\$t.zip\" -UseBasicParsing; Expand-Archive \"\$t.zip\" \$t -Force; & (Get-ChildItem \$t -Recurse -Filter 'Uninstall-Otzaria.ps1' | Select-Object -First 1).FullName"
             echo '## הרצה ישירה בשורה אחת'
             echo
-            echo 'בלי הורדה ידנית — מדביקים בחלון PowerShell, והפקודה מורידה, מחלצת ומריצה לבד.'
-            echo '(הסקריפט אינו קובץ עצמאי — הוא נזקק לתיקיית `lib`, ולכן הפקודה מורידה את ה-ZIP המלא.)'
+            echo 'בלי הורדה ידנית — מדביקים בחלון PowerShell, והפקודה מורידה את הרילייס האחרון, מחלצת ומריצה לבד.'
             echo
             echo '**סריקה בלבד — לא נמחק דבר:**'
             echo
             echo '```powershell'
-            echo "$oneliner"
+            echo 'irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex'
             echo '```'
             echo
-            echo '**הסרה בפועל — אותה פקודה עם `-Remove` בסופה:**'
+            echo '**הסרה בפועל:**'
             echo
             echo '```powershell'
-            echo "$oneliner -Remove"
+            echo 'iex "& { $(irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1) } -Remove"'
             echo '```'
             echo
             if [ -n "$previous" ]; then
