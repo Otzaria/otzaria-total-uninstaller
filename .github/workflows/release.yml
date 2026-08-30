@@ -1,0 +1,114 @@
+name: פרסום רילייס
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'מספר הגרסה (למשל 1.0.0) — ייווצר תג v<גרסה>'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # רילייס לא יוצא בלי שכל מבחני הבעלות עברו בשלוש הפלטפורמות.
+  tests:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: אריזה ופרסום
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: קביעת מספר הגרסה
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            tag="v${version#v}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=otzaria-total-uninstaller-$version" >> "$GITHUB_OUTPUT"
+          echo "גרסה: $version (תג $tag)"
+
+      - name: יצירת התג בהפעלה ידנית
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag -a "${{ steps.version.outputs.tag }}" -m "גרסה ${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: אריזה
+        id: package
+        run: |
+          name='${{ steps.version.outputs.name }}'
+          staging="dist/$name"
+          mkdir -p "$staging"
+          cp -r Uninstall-Otzaria.ps1 uninstall-otzaria.sh lib tests docs README.md "$staging/"
+          echo '${{ steps.version.outputs.version }}' > "$staging/VERSION"
+          chmod +x "$staging/uninstall-otzaria.sh" "$staging/tests/test-ownership.sh"
+          (cd dist && zip -rq "$name.zip" "$name")
+          (cd dist && sha256sum "$name.zip" > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: הרכבת תוכן הרילייס
+        id: notes
+        run: |
+          previous="$(git describe --tags --abbrev=0 '${{ steps.version.outputs.tag }}^' 2>/dev/null || true)"
+          {
+            echo '## מסיר אוצריא טוטאלי — גרסה ${{ steps.version.outputs.version }}'
+            echo
+            echo 'הורידו את `${{ steps.version.outputs.name }}.zip`, חלצו, ופתחו PowerShell בתיקייה.'
+            echo
+            echo '**סריקה בלבד — לא נמחק דבר:**'
+            echo
+            echo '```powershell'
+            echo 'powershell -ExecutionPolicy Bypass -File .\Uninstall-Otzaria.ps1'
+            echo '```'
+            echo
+            echo '**הסרה בפועל:**'
+            echo
+            echo '```powershell'
+            echo 'powershell -ExecutionPolicy Bypass -File .\Uninstall-Otzaria.ps1 -Remove'
+            echo '```'
+            echo
+            echo 'ב-Linux וב-macOS: `./uninstall-otzaria.sh` ואז `--remove`.'
+            echo
+            echo '> הריצו תחילה בלי `-Remove`, קראו את הרשימה, ורק אז הסירו.'
+            echo '> `-KeepLibrary` משאיר את הספרים, `-KeepData` את ההגדרות וההערות.'
+            echo
+            if [ -n "$previous" ]; then
+              echo "## שינויים מאז $previous"
+              echo
+              git log --no-merges --pretty='- %s' "$previous..${{ steps.version.outputs.tag }}"
+              echo
+            fi
+            echo '## אימות ההורדה'
+            echo
+            echo '```'
+            cat dist/SHA256SUMS.txt
+            echo '```'
+          } > dist/RELEASE_NOTES.md
+          cat dist/RELEASE_NOTES.md
+
+      - name: פרסום
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create '${{ steps.version.outputs.tag }}' \
+            --title 'מסיר אוצריא טוטאלי ${{ steps.version.outputs.version }}' \
+            --notes-file dist/RELEASE_NOTES.md \
+            'dist/${{ steps.version.outputs.name }}.zip' \
+            dist/SHA256SUMS.txt

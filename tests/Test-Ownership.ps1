@@ -120,6 +120,49 @@ try {
     Assert-Otz 'תיקייה רגילה כן יכולה להיות שורש ספרייה' (Test-OtzWellKnownUserFolder $root) $false
 
     Write-Host ''
+    Write-Host 'מבחני בעלות — שורש נתונים עם תת-תיקיות גנריות' -ForegroundColor White
+
+    # תת-תיקייה ריקה בשם גנרי אינה ראיה: Documents\otzariaooks של המשתמש
+    # אינו הופך את Documents\otzaria לשורש נתונים של אוצריא.
+    $genericEmpty = New-Fixture 'otzaria-generic' -Directories @('books', 'index', 'databases', 'plugins')
+    Assert-Otz 'תת-תיקיות גנריות ריקות אינן מספיקות' (Test-OtzDataRootOwnership $genericEmpty) $false
+
+    $genericReal = New-Fixture 'otzaria-generic-real' -Files @('books\seforim.db')
+    Assert-Otz 'books עם seforim.db הופך לשורש נתונים' (Test-OtzDataRootOwnership $genericReal) $true
+
+    $pluginsRoot = New-Fixture 'otzaria-plugins' -Directories @('plugins\installed')
+    Assert-Otz 'plugins/installed הוא סימן של אוצריא' (Test-OtzDataRootOwnership $pluginsRoot) $true
+
+    Write-Host ''
+    Write-Host 'מבחני בעלות — יעדים דינמיים בפרופילים אחרים' -ForegroundColor White
+
+    # אותו מבחן שחל על המלאי חייב לחול גם על הממצאים הדינמיים.
+    $profileRepo = [pscustomobject]@{ Target = $repo; Own = 'install'; Marker = $null }
+    Assert-Otz 'ריפו מקור בפרופיל אחר נפסל' (Test-OtzTargetOwnership $profileRepo) $false
+
+    $profileWork = [pscustomobject]@{ Target = $notData; Own = 'dataroot'; Marker = $null }
+    Assert-Otz 'תיקיית עבודה בפרופיל אחר נפסלת' (Test-OtzTargetOwnership $profileWork) $false
+
+    $profileData = [pscustomobject]@{ Target = $dataHive; Own = 'dataroot'; Marker = $null }
+    Assert-Otz 'שורש נתונים בפרופיל אחר מתקבל' (Test-OtzTargetOwnership $profileData) $true
+
+    $storeReal = New-Fixture 'PluginStore' -Files @('app.exe')
+    $storeTarget = [pscustomobject]@{ Target = $storeReal; Own = 'none'; Marker = @('app.exe', 'uninstall.exe') }
+    Assert-Otz 'רכיב נלווה לפי סימן ייעודי' (Test-OtzTargetOwnership $storeTarget) $true
+    $storeFake = [pscustomobject]@{ Target = $notData; Own = 'none'; Marker = @('app.exe', 'uninstall.exe') }
+    Assert-Otz 'תיקייה בלי הסימן הייעודי נפסלת' (Test-OtzTargetOwnership $storeFake) $false
+
+    Write-Host ''
+    Write-Host 'מבחני בעלות — רשומות הסרה' -ForegroundColor White
+
+    Assert-Otz 'רשומה לפי AppId' (Test-OtzVendorOwnership -KeyName '{EEC4F712-CD05-4D15-A753-509E840A51A5}_is1' -InstallLocation '' -UninstallDirectory '') $true
+    Assert-Otz 'רשומה לפי תיקיית התקנה מוכחת' (Test-OtzVendorOwnership -KeyName 'Something' -InstallLocation $install -UninstallDirectory '') $true
+    Assert-Otz 'חנות התוספים לפי שם תיקייה מדויק' (Test-OtzVendorOwnership -KeyName 'Otzaria Plugin Store' -InstallLocation '' -UninstallDirectory (Join-Path $root 'Otzaria Plugin Store')) $true
+    # שם תצוגה שמתחיל ב-Otzaria אינו מספיק: מוצר אחר לא יורץ.
+    Assert-Otz 'מוצר אחר ששמו מתחיל ב-Otzaria נפסל' (Test-OtzVendorOwnership -KeyName 'OtzariaHelper_is1' -InstallLocation $innoApp -UninstallDirectory $innoApp) $false
+    Assert-Otz 'תוכנת Inno אחרת נפסלת' (Test-OtzVendorOwnership -KeyName 'Git_is1' -InstallLocation $innoApp -UninstallDirectory $innoApp) $false
+
+    Write-Host ''
     Write-Host 'מבחני בעלות — מלאי היעדים' -ForegroundColor White
     . (Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) 'lib\OtzariaInventory.ps1')
     $inventory = @(Get-OtzariaInventory)

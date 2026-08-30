@@ -150,26 +150,6 @@ function Split-OtzRegistryPath {
 
 # ─────────────────────── בניית הממצאים ───────────────────────
 
-# שם היעד לבדו אינו מספיק: Windows אינו מבחין ברישיות, ולכן `C:\Otzaria`
-# שבמלאי מצביע גם על ריפו קוד המקור `C:\otzaria`. מטרה נמחקת רק אחרי שהיא
-# מוכיחה שאוצריא יצרה אותה.
-function Test-OtzTargetOwnership {
-    param([Parameter(Mandatory)]$Target)
-
-    switch ($Target.Own) {
-        'install'  { return (Test-OtzInstallOwnership $Target.Target) }
-        'dataroot' { return (Test-OtzDataRootOwnership $Target.Target) }
-    }
-
-    if ($Target.Marker) {
-        foreach ($marker in $Target.Marker) {
-            if (Test-OtzPathSafe (Join-Path $Target.Target $marker)) { return $true }
-        }
-        return $false
-    }
-    return $true
-}
-
 function Expand-OtzTarget {
     param([Parameter(Mandatory)]$Target, [string[]]$DataRoots)
 
@@ -336,20 +316,15 @@ function Get-OtzVendorUninstallers {
                         $display = [string]$sub.GetValue('DisplayName')
                         $uninstall = [string]$sub.GetValue('UninstallString')
                         $location = [string]$sub.GetValue('InstallLocation')
-                        # הרצת מסיר התקנה היא פעולה בלתי הפיכה, ולכן הזיהוי
-                        # אינו יכול להסתמך על substring: או ה-AppId של אוצריא,
-                        # או שם תצוגה שמתחיל בשמה, או תיקיית התקנה מוכחת.
+                        # הרצת מסיר התקנה היא בלתי הפיכה — הזיהוי נעשה
+                        # ב-Test-OtzVendorOwnership, ושם התצוגה אינו קובע בו.
                         $uninstallDir = ''
                         if ($uninstall) {
                             $exePath = $uninstall.Trim().Trim('"').Split('"')[0]
                             if ($exePath) { $uninstallDir = Split-Path -Parent $exePath }
                         }
-                        $firstWord = ''
-                        if ($display) { $firstWord = $display.Trim().Split(' ')[0] }
-                        $isOtzaria = ($name -like '*EEC4F712*') -or
-                                     ($firstWord -in @('אוצריא', 'Otzaria')) -or
-                                     (Test-OtzInstallOwnership $location) -or
-                                     (Test-OtzInstallOwnership $uninstallDir)
+                        $isOtzaria = Test-OtzVendorOwnership -KeyName $name `
+                            -InstallLocation $location -UninstallDirectory $uninstallDir
                         if ($isOtzaria -and $uninstall) {
                             $results += [pscustomobject]@{
                                 Name = if ($display) { $display } else { $name }

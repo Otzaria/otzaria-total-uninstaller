@@ -106,10 +106,16 @@ is_data_root() {
     local path="${1:-}"
     [ -n "$path" ] && [ -d "$path" ] || return 1
     local marker
-    for marker in library_loaded.marker library_path.txt shared_preferences.json books index databases plugins per_book_settings; do
+    for marker in library_loaded.marker library_path.txt shared_preferences.json per_book_settings webview2; do
         [ -e "$path/$marker" ] && return 0
     done
-    ls "$path"/*.hive >/dev/null 2>&1
+    ls "$path"/*.hive >/dev/null 2>&1 && return 0
+    # שמות גנריים ('books', 'index', 'databases', 'plugins') אינם ראיה בפני
+    # עצמם — כל תת-תיקייה חייבת לעבור את מבחן הבעלות שלה.
+    is_books_folder "$path/books" && return 0
+    is_index_folder "$path/index" && return 0
+    is_databases_folder "$path/databases" && return 0
+    [ -d "$path/plugins/installed" ]
 }
 
 # יעד קבוע שנמחק כתיקייה שלמה חייב להוכיח בעלות — התקנה או שורש נתונים.

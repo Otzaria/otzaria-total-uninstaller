@@ -105,12 +105,58 @@ function Test-OtzOwnedComponentPath {
 function Test-OtzDataRootOwnership {
     param([string]$Path)
     if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+
+    # סימנים ייחודיים לאוצריא
     foreach ($marker in @('library_loaded.marker', 'library_path.txt', 'shared_preferences.json',
-                          'books', 'index', 'databases', 'plugins', 'per_book_settings', 'webview2')) {
+                          'per_book_settings', 'webview2')) {
         if (Test-OtzPathSafe (Join-Path $Path $marker)) { return $true }
     }
-    return ((Get-ChildItem -LiteralPath $Path -Filter '*.hive' -Force -ErrorAction SilentlyContinue |
-        Select-Object -First 1) -ne $null)
+    if ((Get-ChildItem -LiteralPath $Path -Filter '*.hive' -Force -ErrorAction SilentlyContinue |
+        Select-Object -First 1)) { return $true }
+
+    # תת-תיקיות בשמות גנריים ('books', 'index', 'databases', 'plugins') אינן
+    # ראיה בפני עצמן — כל אחת חייבת לעבור את מבחן הבעלות שלה.
+    if (Test-OtzBooksFolder (Join-Path $Path 'books')) { return $true }
+    if (Test-OtzIndexFolder (Join-Path $Path 'index')) { return $true }
+    if (Test-OtzDatabasesFolder (Join-Path $Path 'databases')) { return $true }
+    return (Test-OtzPathSafe (Join-Path $Path 'plugins\installed') -Container)
+}
+
+# מבחן הבעלות של יעד מוצהר — משמש גם למלאי הקבוע וגם לממצאים הדינמיים,
+# כדי שלא ייווצר מסלול מחיקה שעוקף אותו.
+function Test-OtzTargetOwnership {
+    param([Parameter(Mandatory)]$Target)
+
+    switch ($Target.Own) {
+        'install'  { return (Test-OtzInstallOwnership $Target.Target) }
+        'dataroot' { return (Test-OtzDataRootOwnership $Target.Target) }
+    }
+
+    if ($Target.Marker) {
+        foreach ($marker in $Target.Marker) {
+            if (Test-OtzPathSafe (Join-Path $Target.Target $marker)) { return $true }
+        }
+        return $false
+    }
+    return $true
+}
+
+# רשומת הסרה שמורצת — פעולה בלתי הפיכה, ולכן שם התצוגה אינו קובע: מוצר אחר
+# ששמו מתחיל ב-"Otzaria" לא יורץ. הרכיבים הנלווים מזוהים בשם תיקייה מדויק.
+function Test-OtzVendorOwnership {
+    param(
+        [string]$KeyName,
+        [string]$InstallLocation,
+        [string]$UninstallDirectory
+    )
+    if ($KeyName -like '*EEC4F712*') { return $true }
+    if (Test-OtzInstallOwnership $InstallLocation) { return $true }
+    if (Test-OtzInstallOwnership $UninstallDirectory) { return $true }
+    foreach ($dir in @($InstallLocation, $UninstallDirectory)) {
+        if ([string]::IsNullOrWhiteSpace($dir)) { continue }
+        if ((Split-Path -Leaf $dir) -in @('Otzaria Plugin Store', 'OtzariaDesktop')) { return $true }
+    }
+    return $false
 }
 
 # תיקיית ספרים — אותם סימנים שהמתקין הרשמי בודק ב-IsOtzariaBooksFolder,
@@ -473,7 +519,7 @@ function Get-OtzCustomLibraryFindings {
         $backupPath = Get-OtzPreferenceValue -DataRoot $root -Key 'key-backup-path'
         if ($backupPath -and (Test-Path -LiteralPath $backupPath -PathType Container)) {
             foreach ($pattern in @('otzaria_backup_*', 'otzaria_archive.json', 'otzaria_db_backup_*')) {
-                Get-ChildItem -LiteralPath $backupPath -Filter $pattern -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                Get-ChildItem -LiteralPath $backupPath -Filter $pattern -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
                     $file = $_
                     $path = $file.FullName
                     New-OtzFinding -Id 'scan.library' -Group 'backups' -Kind 'File' -Target $path `
@@ -491,22 +537,25 @@ function Get-OtzCustomLibraryFindings {
 # על כל הפרופילים, וכך גם כאן. דורש הרשאות מנהל.
 function Get-OtzOtherProfileFindings {
     $profilesRoot = Split-Path -Parent $env:USERPROFILE
-    if (-not (Test-Path -LiteralPath $profilesRoot)) { return }
+    if (-not (Test-OtzPathSafe $profilesRoot -Container)) { return }
     $currentProfile = [System.IO.Path]::GetFullPath($env:USERPROFILE)
 
+    # אותם מבחני בעלות של המלאי הקבוע: לפרופיל של משתמש אחר עלולה להיות
+    # תיקייה בשם זהה שאינה של אוצריא — ריפו מקור, תיקיית עבודה.
     $relatives = @(
-        @{ Path = 'AppData\Roaming\otzaria'; Group = 'data' },
-        @{ Path = 'AppData\Roaming\אוצריא'; Group = 'data' },
-        @{ Path = 'AppData\Roaming\Otzaria'; Group = 'data' },
-        @{ Path = 'AppData\Roaming\com.example\otzaria'; Group = 'data' },
-        @{ Path = 'AppData\Local\otzaria'; Group = 'data' },
-        @{ Path = 'AppData\Local\אוצריא'; Group = 'data' },
-        @{ Path = 'AppData\Local\Programs\Otzaria'; Group = 'app' },
-        @{ Path = 'AppData\Local\Otzaria Plugin Store'; Group = 'related' },
-        @{ Path = 'AppData\Local\com.otzaria.store'; Group = 'related' },
-        @{ Path = 'Documents\otzaria'; Group = 'data' },
-        @{ Path = 'Documents\אוצריא - גיבויים'; Group = 'backups' },
-        @{ Path = 'Documents\OtzariaBackups'; Group = 'backups' }
+        @{ Path = 'AppData\Roaming\otzaria'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Roaming\אוצריא'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Roaming\Otzaria'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Roaming\com.example\otzaria'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Local\otzaria'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Local\אוצריא'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'Documents\otzaria'; Group = 'data'; Own = 'dataroot' },
+        @{ Path = 'AppData\Local\Programs\Otzaria'; Group = 'app'; Own = 'install' },
+        @{ Path = 'AppData\Local\Programs\אוצריא'; Group = 'app'; Own = 'install' },
+        @{ Path = 'AppData\Local\Otzaria Plugin Store'; Group = 'related'; Own = 'none'; Marker = @('app.exe', 'uninstall.exe') },
+        @{ Path = 'AppData\Local\com.otzaria.store'; Group = 'related'; Own = 'none'; Marker = @('EBWebView') },
+        @{ Path = 'Documents\אוצריא - גיבויים'; Group = 'backups'; Own = 'none' },
+        @{ Path = 'Documents\OtzariaBackups'; Group = 'backups'; Own = 'none' }
     )
 
     Get-ChildItem -LiteralPath $profilesRoot -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
@@ -516,7 +565,13 @@ function Get-OtzOtherProfileFindings {
 
         foreach ($entry in $relatives) {
             $candidate = Join-Path $profileDir.FullName $entry.Path
-            if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+            if (-not (Test-OtzPathSafe $candidate -Container)) { continue }
+            $target = [pscustomobject]@{
+                Target = $candidate
+                Own    = $entry.Own
+                Marker = if ($entry.ContainsKey('Marker')) { $entry.Marker } else { $null }
+            }
+            if (-not (Test-OtzTargetOwnership $target)) { continue }
             $path = $candidate
             New-OtzFinding -Id 'scan.profiles' -Group $entry.Group -Kind 'Directory' -Target $path `
                 -Note "פרופיל $($profileDir.Name)" -Remove {
@@ -537,7 +592,10 @@ function Get-OtzOtherProfileDataRoots {
         $profileDir = $_
         if ([System.IO.Path]::GetFullPath($profileDir.FullName) -eq $currentProfile) { return }
         if ($profileDir.Name -in @('Public', 'Default', 'Default User', 'All Users')) { return }
-        foreach ($relative in @('AppData\Roaming\otzaria', 'AppData\Local\otzaria', 'Documents\otzaria')) {
+        foreach ($relative in @('AppData\Roaming\otzaria', 'AppData\Roaming\אוצריא',
+                                'AppData\Roaming\Otzaria', 'AppData\Roaming\com.example\otzaria',
+                                'AppData\Local\otzaria', 'AppData\Local\אוצריא',
+                                'Documents\otzaria')) {
             $candidate = Join-Path $profileDir.FullName $relative
             if (Test-OtzPathSafe $candidate -Container) { $candidate }
         }

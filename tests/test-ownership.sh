@@ -37,6 +37,8 @@ mkdir -p "$ROOT/notdata" && : > "$ROOT/notdata/notes.txt"
 mkdir -p "$ROOT/books" && : > "$ROOT/books/seforim.db"
 mkdir -p "$ROOT/books-fake" && : > "$ROOT/books-fake/my-notes.docx"
 mkdir -p "$ROOT/index" && : > "$ROOT/index/tantivy.lock"
+mkdir -p "$ROOT/generic/books" "$ROOT/generic/index" "$ROOT/generic/databases" "$ROOT/generic/plugins"
+mkdir -p "$ROOT/generic-real/books" && : > "$ROOT/generic-real/books/seforim.db"
 mkdir -p "$ROOT/db" && : > "$ROOT/db/user_books.db"
 
 echo
@@ -45,6 +47,8 @@ assert "תיקיית התקנה מזוהה"            "$(check is_install_dir "
 assert "ריפו קוד המקור נפסל"            "$(check is_install_dir "$ROOT/repo")" 0
 assert "שורש נתונים מזוהה"              "$(check is_data_root "$ROOT/data")" 1
 assert "תיקיית עבודה של המשתמש נפסלת"   "$(check is_data_root "$ROOT/notdata")" 0
+assert "תת-תיקיות גנריות ריקות אינן מספיקות" "$(check is_data_root "$ROOT/generic")" 0
+assert "books עם seforim.db הופך לשורש נתונים" "$(check is_data_root "$ROOT/generic-real")" 1
 assert "תיקיית ספרים מזוהה"             "$(check is_books_folder "$ROOT/books")" 1
 assert "תיקיית books של המשתמש נפסלת"   "$(check is_books_folder "$ROOT/books-fake")" 0
 assert "תיקיית אינדקס מזוהה"            "$(check is_index_folder "$ROOT/index")" 1
