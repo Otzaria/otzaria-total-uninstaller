@@ -10,7 +10,7 @@
 
 | היעד | מבחן הבעלות |
 |---|---|
-| תיקיית התקנה | `otzaria.exe` **וגם** `datalutter_assets` שלצידו |
+| תיקיית התקנה | `otzaria.exe` **וגם** `data\flutter_assets` שלצידו |
 | תיקיית ספרים | `seforim.db` או `otzar-HB_catalog.db` או `תלמוד בבלי` — אותם סימנים כמו `IsOtzariaBooksFolder` במתקין הרשמי |
 | תיקיית אינדקס | `meta.json` / `tantivy.lock` / `.tantivy-writer.lock` |
 | תיקיית מסדי נתונים | `seforim.db` / `cache.db` / `otzaria_lexical.db` |
