@@ -68,6 +68,8 @@ jobs:
         run: |
           previous="$(git describe --tags --abbrev=0 '${{ steps.version.outputs.tag }}^' 2>/dev/null || true)"
           {
+            echo '<div dir="rtl">'
+            echo
             echo '## מסיר אוצריא טוטאלי — גרסה ${{ steps.version.outputs.version }}'
             echo
             echo 'הורידו את `${{ steps.version.outputs.name }}.zip`, חלצו, ופתחו PowerShell בתיקייה.'
@@ -120,6 +122,8 @@ jobs:
             echo '```'
             cat dist/SHA256SUMS.txt
             echo '```'
+            echo
+            echo '</div>'
           } > dist/RELEASE_NOTES.md
           cat dist/RELEASE_NOTES.md
 
