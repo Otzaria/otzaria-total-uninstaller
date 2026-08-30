@@ -75,7 +75,9 @@ function Get-OtzariaInventory {
     # ── שורשי נתונים (AppPaths.getDataRootPath לאורך הדורות) ────────────────
     New-OtzTarget -Id 'data.roaming' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad 'otzaria') -Note 'שורש הנתונים הנוכחי: hive, תוספים, webview2, logs'
     New-OtzTarget -Id 'data.roaming.he' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad $heb) -Note 'shared_preferences ישן (CompanyName עברי)'
+    New-OtzTarget -Id 'data.roaming.he.nested' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad "$heb\$heb") -Note 'השורש המקונן <CompanyName>\<ProductName> — מופיע ב-installer/reset_settings.ps1'
     New-OtzTarget -Id 'data.roaming.cap' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad 'Otzaria') -Note 'CompanyName "Otzaria" (גרסאות ביניים)'
+    New-OtzTarget -Id 'data.roaming.cap.nested' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad 'Otzaria\otzaria') -Note 'השורש המקונן של אותה גרסה'
     New-OtzTarget -Id 'data.roaming.example' -Kind Path -Own dataroot -Group data -Target (Join-Path $rad 'com.example\otzaria') -Note 'CompanyName "com.example" (גרסאות מוקדמות)'
     New-OtzTarget -Id 'data.local' -Kind Path -Own dataroot -Group data -Target (Join-Path $lad 'otzaria')
     New-OtzTarget -Id 'data.local.he' -Kind Path -Own dataroot -Group data -Target (Join-Path $lad $heb) -Note 'נתיב legacy שהמתקין הרשמי עדיין מנקה'
@@ -95,10 +97,12 @@ function Get-OtzariaInventory {
     New-OtzTarget -Id 'desktop.agent.root' -Kind Path -Group related -Marker @('config.json', 'start_desktop.ps1', 'noVNC') -Scope Machine -Target (Join-Path "$env:SystemDrive\" 'OtzariaDesktop') -Note 'אותו סוכן בשורש הכונן'
 
     # ── קבצים זמניים ────────────────────────────────────────────────────────
-    foreach ($pattern in @('otzaria*', 'otz_plugin*', 'otzaria_update', 'otzaria_plugin_uploads', 'otzaria_temp_index_*', 'otzaria-settings-*')) {
-        New-OtzTarget -Id "temp.$pattern" -Kind PathGlob -Group traces -Target (Join-Path $env:TEMP $pattern)
-    }
-    New-OtzTarget -Id 'temp.machine' -Kind PathGlob -Group traces -Scope Machine -Target (Join-Path $env:SystemRoot 'Temp\otzaria*')
+    # 'otzaria*' לבדו תופס גם תיקיות של כלים אחרים (למשל otzaria-actionlint),
+    # ולכן שם הפריט נבדק מול הרשימה המדויקת של מה שהתוכנה יוצרת. הסיומת
+    # ההקסדצימלית היא של Directory.systemTemp.createTemp('otzaria').
+    $tempPattern = '^(otzaria(_update|_plugin_uploads|_temp_index_.+|-settings-.+|\.pid(\.lock)?|[0-9a-f]{8,})|otz_plugin_.+)$'
+    New-OtzTarget -Id 'temp.user' -Kind PathGlob -Group traces -Match $tempPattern -Target (Join-Path $env:TEMP 'otz*')
+    New-OtzTarget -Id 'temp.machine' -Kind PathGlob -Group traces -Scope Machine -Match $tempPattern -Target (Join-Path $env:SystemRoot 'Temp\otz*')
 
     # ── עקבות מערכת ─────────────────────────────────────────────────────────
     New-OtzTarget -Id 'trace.crashdumps' -Kind PathGlob -Group traces -Target (Join-Path $lad 'CrashDumps\otzaria.exe*.dmp')

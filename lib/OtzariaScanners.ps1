@@ -67,8 +67,11 @@ function Test-OtzInstallOwnership {
     param([string]$Path)
     if (Test-OtzInstallDirectory $Path) { return $true }
     if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
-    # unins000.exe אינו סימן: הוא של Inno Setup, ומופיע בכל תוכנה שנארזה בו.
-    foreach ($marker in @('otzaria.exe', 'system_install.marker', 'portable.marker')) {
+    # otzaria.exe לבדו אינו סימן: build artifact שהונח בריפו המקור נראה זהה.
+    # התקנה אמיתית תמיד נושאת גם את חבילת ה-assets (נבדק ב-Test-OtzInstallDirectory)
+    # או סימן שהמתקין כתב.
+    # unins000.exe אף הוא אינו סימן: הוא של Inno Setup, ומופיע בכל תוכנה שנארזה בו.
+    foreach ($marker in @('system_install.marker', 'portable.marker')) {
         if (Test-OtzPathSafe (Join-Path $Path $marker)) { return $true }
     }
     return $false
@@ -102,11 +105,10 @@ function Test-OtzOwnedComponentPath {
 
 # שורש נתונים: תיקייה שאוצריא יצרה בה את מבנה העבודה שלה. שם התיקייה לבדו
 # ("otzaria") אינו מספיק — הוא מתנגש עם תיקיות עבודה של המשתמש.
-function Test-OtzDataRootOwnership {
+function Test-OtzDataRootMarkers {
     param([string]$Path)
     if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
 
-    # סימנים ייחודיים לאוצריא
     foreach ($marker in @('library_loaded.marker', 'library_path.txt', 'shared_preferences.json',
                           'per_book_settings', 'webview2')) {
         if (Test-OtzPathSafe (Join-Path $Path $marker)) { return $true }
@@ -120,6 +122,33 @@ function Test-OtzDataRootOwnership {
     if (Test-OtzIndexFolder (Join-Path $Path 'index')) { return $true }
     if (Test-OtzDatabasesFolder (Join-Path $Path 'databases')) { return $true }
     return (Test-OtzPathSafe (Join-Path $Path 'plugins\installed') -Container)
+}
+
+# שורשי נתונים מקוננים: shared_preferences נכתב ל-
+# %APPDATA%\<CompanyName>\<ProductName>, ולכן השורש האמיתי יושב עומק אחד
+# פנימה — למשל %APPDATA%\אוצריא\אוצריא.
+function Get-OtzNestedDataRoots {
+    param([string]$Path)
+    if (-not (Test-OtzPathSafe $Path -Container)) { return }
+    Get-ChildItem -LiteralPath $Path -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        if (Test-OtzDataRootMarkers $_.FullName) { $_.FullName }
+    }
+}
+
+function Test-OtzDataRootOwnership {
+    param([string]$Path)
+    if (Test-OtzDataRootMarkers $Path) { return $true }
+    return (@(Get-OtzNestedDataRoots $Path).Count -gt 0)
+}
+
+# תיקיית מילונים — קבצי המילון שאוצריא מורידה. 'dictionaries' הוא שם גנרי.
+function Test-OtzDictionariesFolder {
+    param([string]$Path)
+    if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+    foreach ($name in @('dictionary.json', 'Acronyms.json', 'otzaria_lexical.db', 'lexical.db')) {
+        if (Test-OtzPathSafe (Join-Path $Path $name)) { return $true }
+    }
+    return $false
 }
 
 # מבחן הבעלות של יעד מוצהר — משמש גם למלאי הקבוע וגם לממצאים הדינמיים,
@@ -456,8 +485,8 @@ function Get-OtzCustomLibraryFindings {
     # תיקיות שאוצריא יוצרת בשורש הספרייה. השורש עצמו לעולם אינו נמחק —
     # ייתכן שהמשתמש בחר תיקייה שיש בה עוד תוכן שלו.
     # 'index' ו-'databases' הם שמות גנריים ולכן נבדקים בנפרד; השאר ייחודיים.
-    $ownedNames = @('books', 'dictionaries', 'library_update_cache',
-                    'pdfium', 'per_book_settings', '.otzaria-books-backup', '.otzaria-index-backup')
+    $ownedNames = @('books', 'library_update_cache', 'pdfium', 'per_book_settings',
+                    '.otzaria-books-backup', '.otzaria-index-backup')
     $seen = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
 
     function Add-OwnedDirectory {
@@ -501,6 +530,10 @@ function Get-OtzCustomLibraryFindings {
                 $siblingDb = Join-Path $libRoot 'databases'
                 if (Test-OtzDatabasesFolder $siblingDb) {
                     Add-OwnedDirectory -Candidate $siblingDb -Source "ספרייה מותאמת, לפי $root"
+                }
+                $siblingDict = Join-Path $libRoot 'dictionaries'
+                if (Test-OtzDictionariesFolder $siblingDict) {
+                    Add-OwnedDirectory -Candidate $siblingDict -Source "ספרייה מותאמת, לפי $root"
                 }
             }
         }
@@ -597,7 +630,9 @@ function Get-OtzOtherProfileDataRoots {
                                 'AppData\Local\otzaria', 'AppData\Local\אוצריא',
                                 'Documents\otzaria')) {
             $candidate = Join-Path $profileDir.FullName $relative
-            if (Test-OtzPathSafe $candidate -Container) { $candidate }
+            if (-not (Test-OtzPathSafe $candidate -Container)) { continue }
+            if (Test-OtzDataRootMarkers $candidate) { $candidate }
+            Get-OtzNestedDataRoots $candidate
         }
     }
 }

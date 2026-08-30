@@ -68,6 +68,11 @@ try {
     $innoApp = New-Fixture 'SomeInnoApp' -Files @('unins000.exe', 'app.exe')
     Assert-Otz 'תוכנת Inno אחרת נפסלת' (Test-OtzInstallOwnership $innoApp) $false
 
+    # build artifact שהונח בריפו המקור: קובץ בשם otzaria.exe בלי חבילת assets
+    # ובלי סימני מתקין אינו הופך את הריפו להתקנה.
+    $repoWithExe = New-Fixture 'Otzaria-repo-with-exe' -Files @('otzaria.exe', 'pubspec.yaml') -Directories @('lib')
+    Assert-Otz 'ריפו עם build artifact בשם otzaria.exe נפסל' (Test-OtzInstallOwnership $repoWithExe) $false
+
     $empty = New-Fixture 'Otzaria-empty'
     Assert-Otz 'תיקייה ריקה נפסלת' (Test-OtzInstallOwnership $empty) $false
 
@@ -132,6 +137,29 @@ try {
 
     $pluginsRoot = New-Fixture 'otzaria-plugins' -Directories @('plugins\installed')
     Assert-Otz 'plugins/installed הוא סימן של אוצריא' (Test-OtzDataRootOwnership $pluginsRoot) $true
+
+    # %APPDATA%\<CompanyName>\<ProductName> — השורש האמיתי עומק אחד פנימה.
+    $nestedParent = New-Fixture 'CompanyRoot' -Files @('ProductRoot\shared_preferences.json')
+    Assert-Otz 'שורש נתונים מקונן מזוהה דרך ההורה' (Test-OtzDataRootOwnership $nestedParent) $true
+    Assert-Otz 'ההורה לבדו אינו נושא סימנים' (Test-OtzDataRootMarkers $nestedParent) $false
+    Assert-Otz 'הבן המקונן מוחזר לקריאת ההעדפות' (@(Get-OtzNestedDataRoots $nestedParent).Count -eq 1) $true
+
+    $dict = New-Fixture 'dictionaries-real' -Files @('dictionary.json')
+    Assert-Otz 'תיקיית מילונים לפי dictionary.json' (Test-OtzDictionariesFolder $dict) $true
+    Assert-Otz 'תיקיית dictionaries גנרית נפסלת' (Test-OtzDictionariesFolder $booksFake) $false
+
+    Write-Host ''
+    Write-Host 'מבחני בעלות — סינון קבצים זמניים' -ForegroundColor White
+    . (Join-Path (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)) 'lib\OtzariaInventory.ps1')
+    $tempTarget = @(Get-OtzariaInventory | Where-Object { $_.Id -eq 'temp.user' })[0]
+    foreach ($name in @('otzaria_update', 'otzaria_plugin_uploads', 'otzaria_temp_index_918310dd',
+                        'otzaria-settings-abc', 'otzaria.pid', 'otzaria.pid.lock', 'otzaria59b0f871', 'otz_plugin_x')) {
+        Assert-Otz "תיקייה זמנית של אוצריא: $name" ($name -match $tempTarget.Match) $true
+    }
+    # תיקיות זמניות של כלים אחרים ששמן מתחיל ב-otzaria
+    foreach ($name in @('otzaria-actionlint', 'otzaria-store-sync', 'otzariabuild')) {
+        Assert-Otz "תיקייה זמנית שאינה של אוצריא: $name" ($name -match $tempTarget.Match) $false
+    }
 
     Write-Host ''
     Write-Host 'מבחני בעלות — יעדים דינמיים בפרופילים אחרים' -ForegroundColor White

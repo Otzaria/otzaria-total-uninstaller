@@ -174,6 +174,8 @@ function Expand-OtzTarget {
             if (-not (Test-Path -LiteralPath $parent)) { return }
             Get-ChildItem -LiteralPath $parent -Filter $leaf -Force -ErrorAction SilentlyContinue | ForEach-Object {
                 $item = $_
+                # תבנית הגלוב רחבה בכוונה; המסננת המדויקת היא Match.
+                if ($Target.Match -and $item.Name -notmatch $Target.Match) { return }
                 $path = $item.FullName
                 $size = if ($item.PSIsContainer) { Get-OtzDirectorySize $path } else { $item.Length }
                 New-OtzFinding -Id $Target.Id -Group $Target.Group -Kind $(if ($item.PSIsContainer) { 'Directory' } else { 'File' }) `
@@ -444,10 +446,14 @@ $inventory = @(Get-OtzariaInventory)
 # שורשי הנתונים נאספים תחילה — מהם נקרא library_path.txt לפני שהם נמחקים.
 $dataRoots = @($inventory | Where-Object { $_.Kind -eq 'Path' -and $_.Group -in @('data', 'library') } |
     ForEach-Object { $_.Target } | Where-Object { Test-Path -LiteralPath $_ })
+# שורש מקונן (%APPDATA%\<Company>\<Product>) מחזיק את shared_preferences,
+# ובלעדיו נתיב ספרייה מותאם שנרשם בגרסה ישנה לא ייקרא.
+$dataRoots += @($dataRoots | ForEach-Object { Get-OtzNestedDataRoots $_ })
 if ($isAdmin) {
     # גם ההעדפות של משתמשים אחרים — ספרייה שהם העבירו לכונן אחר לא תישאר.
     $dataRoots += @(Get-OtzOtherProfileDataRoots)
 }
+$dataRoots = @($dataRoots | Where-Object { $_ } | Sort-Object -Unique)
 
 $findings = New-Object System.Collections.Generic.List[object]
 foreach ($target in $inventory) {

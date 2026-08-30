@@ -58,6 +58,8 @@ substring, והנזק המרבי הוא מחיקת רשומת שימוש של ת
 |---|---|
 | `%APPDATA%\otzaria` | שורש הנתונים הנוכחי |
 | `%APPDATA%\אוצריא` | `shared_preferences` נכתב ל-`%APPDATA%\<CompanyName>\<ProductName>`; ב-`windows/runner/Runner.rc` שני השדות היו `אוצריא` |
+| `%APPDATA%\אוצריא\אוצריא` | השורש המקונן עצמו — מופיע גם ב-`installer/reset_settings.ps1` שבמאגר של אוצריא |
+| `%APPDATA%\Otzaria\otzaria` | אותו מבנה בגרסאות שבהן ה-`CompanyName` היה `Otzaria` |
 | `%APPDATA%\Otzaria` | `CompanyName` בגרסאות הביניים |
 | `%APPDATA%\com.example\otzaria` | `CompanyName` בגרסאות המוקדמות (ברירת המחדל של Flutter) |
 | `%LOCALAPPDATA%\otzaria` | מטמון |
@@ -81,9 +83,9 @@ substring, והנזק המרבי הוא מחיקת רשומת שימוש של ת
 
 שורש הספרייה עשוי להיות תיקייה שהמשתמש בחר ושיש בה עוד תוכן שלו, ולכן השורש עצמו
 לעולם אינו נמחק — נמחקות ממנו רק תיקיות בשמות שאוצריא יוצרת: `books`, `index`,
-`dictionaries`, `library_update_cache`, `pdfium`, `per_book_settings`, וכן
-`.otzaria-books-backup` ו-`.otzaria-index-backup` — תיקיות ה-rollback של המתקין המלא.
-`index` ו-`databases` הם שמות גנריים ולכן עוברים מבחן בעלות נפרד משלהם.
+`library_update_cache`, `pdfium`, `per_book_settings`, וכן `.otzaria-books-backup`
+ו-`.otzaria-index-backup` — תיקיות ה-rollback של המתקין המלא. `index`, `databases`
+ו-`dictionaries` הם שמות גנריים ולכן כל אחת מהן עוברת מבחן בעלות נפרד משלה.
 
 כל זה רק אחרי שתיקיית הספרים עברה את מבחן הבעלות, ורק אם השורש עצמו אינו תיקייה
 מוכרת של המשתמש (`Documents`, `Downloads`, שולחן העבודה, הפרופיל, OneDrive) — אחרת
@@ -149,8 +151,12 @@ substring, והנזק המרבי הוא מחיקת רשומת שימוש של ת
 ## קבצים זמניים
 
 מ-`Directory.systemTemp` בקוד: `otzaria_update`, `otzaria_plugin_uploads`,
-`otzaria_temp_index_*`, `otzaria-settings-*`, `otz_plugin_*`, וקובצי ה-PID של
-מופע יחיד. בנוסף כל `%TEMP%\otzaria*`.
+`otzaria_temp_index_*`, `otzaria-settings-*`, `otz_plugin_*`, קובצי ה-PID של מופע
+יחיד, ותיקיות `otzaria<8 ספרות הקס>` מ-`createTemp('otzaria')`.
+
+התבנית `otzaria*` **אינה** בשימוש: היא תפסה גם תיקיות זמניות של כלים אחרים ששמן
+מתחיל כך (למשל `otzaria-actionlint`). הסריקה מונה `otz*` ומסננת את שם הפריט מול
+הרשימה המדויקת הזו — ויש על כך בדיקות לשני הכיוונים.
 
 ## עקבות מערכת
 

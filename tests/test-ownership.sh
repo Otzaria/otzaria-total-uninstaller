@@ -40,6 +40,7 @@ mkdir -p "$ROOT/index" && : > "$ROOT/index/tantivy.lock"
 mkdir -p "$ROOT/generic/books" "$ROOT/generic/index" "$ROOT/generic/databases" "$ROOT/generic/plugins"
 mkdir -p "$ROOT/generic-real/books" && : > "$ROOT/generic-real/books/seforim.db"
 mkdir -p "$ROOT/db" && : > "$ROOT/db/user_books.db"
+mkdir -p "$ROOT/dict" && : > "$ROOT/dict/dictionary.json"
 
 echo
 echo "מבחני בעלות (Bash)"
@@ -54,6 +55,10 @@ assert "תיקיית books של המשתמש נפסלת"   "$(check is_books_fol
 assert "תיקיית אינדקס מזוהה"            "$(check is_index_folder "$ROOT/index")" 1
 assert "תיקיית index גנרית נפסלת"       "$(check is_index_folder "$ROOT/books-fake")" 0
 assert "מסדי נתונים לפי user_books.db"  "$(check is_databases_folder "$ROOT/db")" 1
+assert "תיקיית מילונים לפי dictionary.json"  "$(check is_dictionaries_folder "$ROOT/dict")" 1
+assert "תיקיית dictionaries גנרית נפסלת"    "$(check is_dictionaries_folder "$ROOT/books-fake")" 0
+assert "Documents אינו שורש ספרייה חוקי"    "$(check is_well_known_folder "$HOME/Documents")" 1
+assert "תיקייה רגילה כן יכולה להיות שורש"   "$(check is_well_known_folder "$ROOT/generic")" 0
 assert "תיקיית databases גנרית נפסלת"   "$(check is_databases_folder "$ROOT/books-fake")" 0
 
 echo

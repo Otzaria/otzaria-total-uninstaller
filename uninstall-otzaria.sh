@@ -94,6 +94,29 @@ is_databases_folder() {
     return 1
 }
 
+# תיקיית מילונים — קבצי המילון שאוצריא מורידה. 'dictionaries' הוא שם גנרי.
+is_dictionaries_folder() {
+    local path="${1:-}"
+    [ -n "$path" ] && [ -d "$path" ] || return 1
+    local name
+    for name in dictionary.json Acronyms.json otzaria_lexical.db lexical.db; do
+        [ -f "$path/$name" ] && return 0
+    done
+    return 1
+}
+
+# תיקייה מוכרת של המשתמש — גם אם הצביע לשם כשורש הספרייה, אסור למחוק ממנה
+# תיקיות בשמות גנריים.
+is_well_known_folder() {
+    local path="${1:-}"
+    [ -n "$path" ] || return 0
+    local known
+    for known in "$HOME" "$HOME/Documents" "$HOME/Downloads" "$HOME/Desktop"                  "$HOME/Pictures" "$HOME/Music" "$HOME/Videos" "$HOME/Library"                  "$HOME/.local" "$HOME/.local/share" "$HOME/.config" "$HOME/.cache" "/" "/opt" "/usr" "/var"; do
+        [ "${path%/}" = "${known%/}" ] && return 0
+    done
+    return 1
+}
+
 # תיקיית התקנה — קובץ ההרצה וחבילת ה-assets של Flutter שלצידו.
 is_install_dir() {
     local path="${1:-}"
@@ -189,7 +212,8 @@ fi
 # ── נתיבים מותאמים מההגדרות ────────────────────────────────────────────────
 # השורש שהמשתמש בחר לעולם אינו נמחק — רק תיקיות בשמות שאוצריא יוצרת, ורק
 # אחרי שהספרייה עברה את מבחן הבעלות.
-OWNED_NAMES="books index databases dictionaries library_update_cache pdfium per_book_settings .otzaria-books-backup .otzaria-index-backup"
+# 'index', 'databases' ו-'dictionaries' הם שמות גנריים ולכן נבדקים בנפרד.
+OWNED_NAMES="books library_update_cache pdfium per_book_settings .otzaria-books-backup .otzaria-index-backup"
 
 for root in ${DATA_ROOTS+"${DATA_ROOTS[@]}"}; do
     [ -d "$root" ] || continue
@@ -204,10 +228,13 @@ for root in ${DATA_ROOTS+"${DATA_ROOTS[@]}"}; do
         else
             books="$lib/books"; lib_root="$lib"
         fi
-        if is_books_folder "$books" || is_books_folder "$lib"; then
+        if { is_books_folder "$books" || is_books_folder "$lib"; } && ! is_well_known_folder "$lib_root"; then
             for name in $OWNED_NAMES; do
                 add library "$lib_root/$name"
             done
+            is_index_folder "$lib_root/index" && add library "$lib_root/index"
+            is_databases_folder "$lib_root/databases" && add library "$lib_root/databases"
+            is_dictionaries_folder "$lib_root/dictionaries" && add library "$lib_root/dictionaries"
         else
             echo "  [דילוג] נתיב ספרייה מההגדרות שלא עבר מבחן בעלות: $lib" >&2
         fi
