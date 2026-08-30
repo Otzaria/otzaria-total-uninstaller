@@ -94,6 +94,17 @@ function Format-OtzSize {
     return "$Bytes B"
 }
 
+# Measure-Object על אוסף ריק אינו מחזיר דבר, וגישה ל-Sum תחת StrictMode
+# זורקת. על מחשב נקי כל הקבוצות ריקות — ולכן הסכימה נעשית בלולאה.
+function Get-OtzTotalSize {
+    param($Items)
+    [long]$total = 0
+    foreach ($item in @($Items)) {
+        if ($item -and $item.SizeBytes) { $total += [long]$item.SizeBytes }
+    }
+    return $total
+}
+
 function Get-OtzDirectorySize {
     param([string]$Path)
     $total = 0L
@@ -531,9 +542,7 @@ $groupLabels = @{
 foreach ($group in @('app', 'data', 'library', 'backups', 'related', 'traces', 'userfiles')) {
     $items = @($findings | Where-Object { $_.Group -eq $group })
     if ($items.Count -eq 0) { continue }
-    [long]$size = 0
-    $sum = ($items | Measure-Object -Property SizeBytes -Sum).Sum
-    if ($sum) { $size = [long]$sum }
+    $size = Get-OtzTotalSize $items
     $isSkipped = $group -in $skipGroups
     $suffix = if ($isSkipped) { ' — נשמר' } else { '' }
     $color = if ($isSkipped) { 'DarkGray' } else { 'Yellow' }
@@ -545,9 +554,7 @@ foreach ($group in @('app', 'data', 'library', 'backups', 'related', 'traces', '
     Write-Host ''
 }
 
-[long]$totalSize = 0
-$totalSum = ($toRemove | Measure-Object -Property SizeBytes -Sum).Sum
-if ($totalSum) { $totalSize = [long]$totalSum }
+$totalSize = Get-OtzTotalSize $toRemove
 Write-Host ("סה""כ למחיקה: {0} פריטים, {1}" -f $toRemove.Count, (Format-OtzSize $totalSize)) -ForegroundColor Cyan
 if ($skipped.Count -gt 0) {
     Write-Host ("נשמרים לבקשתך: {0} פריטים" -f $skipped.Count) -ForegroundColor DarkGray
