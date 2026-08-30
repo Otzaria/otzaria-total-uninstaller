@@ -122,7 +122,7 @@ try {
     Write-Host ''
     Write-Host 'מבחני בעלות — שורש נתונים עם תת-תיקיות גנריות' -ForegroundColor White
 
-    # תת-תיקייה ריקה בשם גנרי אינה ראיה: Documents\otzariaooks של המשתמש
+    # תת-תיקייה ריקה בשם גנרי אינה ראיה: Documents\otzaria\books של המשתמש
     # אינו הופך את Documents\otzaria לשורש נתונים של אוצריא.
     $genericEmpty = New-Fixture 'otzaria-generic' -Directories @('books', 'index', 'databases', 'plugins')
     Assert-Otz 'תת-תיקיות גנריות ריקות אינן מספיקות' (Test-OtzDataRootOwnership $genericEmpty) $false
