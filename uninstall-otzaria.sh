@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # מסיר אוצריא טוטאלי — Linux ו-macOS.
 # כברירת מחדל: סריקה ודיווח בלבד. למחיקה בפועל: --remove
+#
+# כלל ברזל: שם שמכיל "otzaria" אינו הוכחת בעלות. תיקייה שהגיעה מהגדרות
+# המשתמש נמחקת רק אחרי מבחן בעלות — קובץ שרק אוצריא יוצרת.
+#
+# תואם Bash 3.2 (ברירת המחדל ב-macOS) — בלי מערכים אסוציאטיביים ובלי mapfile.
 set -uo pipefail
 
 REMOVE=0
@@ -20,7 +25,7 @@ usage() {
   --keep-data      משאיר את נתוני המשתמש
   -h, --help       העזרה הזו
 
-מחיקת יעדים מערכתיים (/opt, /usr, /var/lib) דורשת sudo.
+מחיקת יעדים מערכתיים (/opt, /usr, /var/lib, /Applications) דורשת sudo.
 USAGE
 }
 
@@ -40,16 +45,81 @@ done
 OS="$(uname -s)"
 TARGETS=()   # "group|path"
 
-add() { TARGETS+=("$1|$2"); }
+add() {
+    local group="$1" path="$2"
+    [ -n "$path" ] || return 0
+    [ -e "$path" ] || return 0
+    # שמירה מפני נתיב קצר מדי (שורש כונן) או תיקיית הבית עצמה
+    [ "${#path}" -ge 6 ] || return 0
+    [ "$path" != "$HOME" ] || return 0
+    local entry
+    for entry in ${TARGETS+"${TARGETS[@]}"}; do
+        [ "$entry" = "$group|$path" ] && return 0
+    done
+    TARGETS+=("$group|$path")
+}
 
-# ── התקנה ──────────────────────────────────────────────────────────────────
+group_label() {
+    case "$1" in
+        app) echo "התוכנה עצמה" ;;
+        data) echo "נתוני משתמש" ;;
+        library) echo "ספרייה ואינדקס" ;;
+        backups) echo "גיבויים" ;;
+        *) echo "$1" ;;
+    esac
+}
+
+# ── מבחני בעלות ────────────────────────────────────────────────────────────
+
+# תיקיית ספרים — אותם סימנים שמסיר ההתקנה הרשמי בודק ב-IsOtzariaBooksFolder.
+is_books_folder() {
+    local path="${1:-}"
+    [ -n "$path" ] && [ -d "$path" ] || return 1
+    [ -f "$path/seforim.db" ] || [ -f "$path/otzar-HB_catalog.db" ] || [ -d "$path/תלמוד בבלי" ]
+}
+
+is_index_folder() {
+    local path="${1:-}"
+    [ -n "$path" ] && [ -d "$path" ] || return 1
+    [ -f "$path/meta.json" ] || [ -f "$path/tantivy.lock" ] || [ -f "$path/.tantivy-writer.lock" ]
+}
+
+is_databases_folder() {
+    local path="${1:-}"
+    [ -n "$path" ] && [ -d "$path" ] || return 1
+    [ -f "$path/seforim.db" ] || [ -f "$path/cache.db" ] || [ -f "$path/otzaria_lexical.db" ]
+}
+
+# תיקיית התקנה — קובץ ההרצה וחבילת ה-assets של Flutter שלצידו.
+is_install_dir() {
+    local path="${1:-}"
+    [ -n "$path" ] && [ -d "$path" ] || return 1
+    [ -f "$path/otzaria" ] && [ -d "$path/data/flutter_assets" ]
+}
+
+# קריאת ערך מ-shared_preferences.json בלי jq — אותה גישה של המתקין הרשמי.
+pref_value() {
+    local root="$1" key="$2" prefs="$1/shared_preferences.json"
+    [ -f "$prefs" ] || return 0
+    sed -n "s/.*\"\(flutter\.\)\{0,1\}$key\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\2/p" "$prefs" | head -n 1
+}
+
+# ── התקנה ונתונים ──────────────────────────────────────────────────────────
+DATA_ROOTS=()
+
 if [ "$OS" = "Darwin" ]; then
-    add app "/Applications/Otzaria.app"
-    add app "$HOME/Applications/Otzaria.app"
+    # שם היישום הוא PRODUCT_NAME שב-AppInfo.xcconfig — עברי בגרסאות הנוכחיות.
+    for app_name in "אוצריא.app" "Otzaria.app"; do
+        add app "/Applications/$app_name"
+        add app "$HOME/Applications/$app_name"
+    done
+    DATA_ROOTS+=("$HOME/Library/Application Support/otzaria")
     add data "$HOME/Library/Application Support/otzaria"
+    add data "$HOME/Library/Application Support/אוצריא"
     add data "/Library/Application Support/otzaria"
     add data "/Library/Application Support/Otzaria"
-    for bundle in com.mendelg.otzaria org.otzaria.otzaria; do
+    # מזהי החבילה לאורך הדורות
+    for bundle in com.example.otzaria com.mendelg.otzaria org.otzaria.otzaria; do
         add app "$HOME/Library/Preferences/$bundle.plist"
         add data "$HOME/Library/Caches/$bundle"
         add data "$HOME/Library/WebKit/$bundle"
@@ -57,6 +127,7 @@ if [ "$OS" = "Darwin" ]; then
         add data "$HOME/Library/Saved Application State/$bundle.savedState"
     done
     add backups "$HOME/Documents/אוצריא - גיבויים"
+    add backups "$HOME/Documents/OtzariaBackups"
 else
     add app "/opt/otzaria"
     add app "/usr/local/otzaria"
@@ -65,45 +136,74 @@ else
     add app "/usr/share/applications/otzaria.desktop"
     add app "$HOME/.local/share/applications/otzaria.desktop"
     add app "$HOME/.local/share/mime/packages/otzaria-plugin.xml"
+    DATA_ROOTS+=("$HOME/.local/share/otzaria")
     add data "$HOME/.local/share/otzaria"
     add data "$HOME/.config/otzaria"
     add data "$HOME/.cache/otzaria"
     add library "/var/lib/otzaria"
     add backups "$HOME/Documents/אוצריא - גיבויים"
+    add backups "$HOME/Documents/OtzariaBackups"
     # אייקון ה-MIME של קובצי ‎.otzplugin‎ בכל גודל תמה שהותקן
     while IFS= read -r icon; do
         add app "$icon"
     done < <(find "$HOME/.local/share/icons" -name 'application-x-otzaria-plugin.png' 2>/dev/null)
-    # קיצורים שנוצרו על שולחן העבודה (גם ע"י תוספים) — מזוהים לפי היעד
+    # קיצורים — לפי ה-Exec שבקובץ, לא לפי שמו
     while IFS= read -r desktop_file; do
-        if grep -qiE 'otzaria' "$desktop_file" 2>/dev/null; then
+        if grep -qE '^Exec=.*(/otzaria|otzaria://)' "$desktop_file" 2>/dev/null; then
             add app "$desktop_file"
         fi
-    done < <(find "$HOME/Desktop" "$HOME/שולחן העבודה" -maxdepth 1 -name '*.desktop' 2>/dev/null)
+    done < <(find "$HOME/Desktop" -maxdepth 1 -name '*.desktop' 2>/dev/null)
 fi
 
-# ── ספרייה בנתיב מותאם ─────────────────────────────────────────────────────
-# נקרא מ-library_path.txt לפני שהשורש נמחק.
-for root in "$HOME/.local/share/otzaria" "$HOME/Library/Application Support/otzaria"; do
-    record="$root/library_path.txt"
-    [ -f "$record" ] || continue
-    lib="$(tr -d '\r\n' < "$record")"
-    [ -n "$lib" ] && [ -d "$lib" ] || continue
-    case "$lib" in "$root"*) continue ;; esac
-    add library "$(dirname "$lib")"
+# ── נתיבים מותאמים מההגדרות ────────────────────────────────────────────────
+# השורש שהמשתמש בחר לעולם אינו נמחק — רק תיקיות בשמות שאוצריא יוצרת, ורק
+# אחרי שהספרייה עברה את מבחן הבעלות.
+OWNED_NAMES="books index databases dictionaries library_update_cache pdfium per_book_settings .otzaria-books-backup .otzaria-index-backup"
+
+for root in ${DATA_ROOTS+"${DATA_ROOTS[@]}"}; do
+    [ -d "$root" ] || continue
+
+    lib=""
+    [ -f "$root/library_path.txt" ] && lib="$(tr -d '\r\n' < "$root/library_path.txt")"
+    [ -n "$lib" ] || lib="$(pref_value "$root" 'key-library-path')"
+
+    if [ -n "$lib" ]; then
+        if [ "$(basename "$lib")" = "books" ]; then
+            books="$lib"; lib_root="$(dirname "$lib")"
+        else
+            books="$lib/books"; lib_root="$lib"
+        fi
+        if is_books_folder "$books" || is_books_folder "$lib"; then
+            for name in $OWNED_NAMES; do
+                add library "$lib_root/$name"
+            done
+        else
+            echo "  [דילוג] נתיב ספרייה מההגדרות שלא עבר מבחן בעלות: $lib" >&2
+        fi
+    fi
+
+    index_path="$(pref_value "$root" 'key-index-path')"
+    is_index_folder "$index_path" && add library "$index_path"
+
+    db_path="$(pref_value "$root" 'key-databases-path')"
+    is_databases_folder "$db_path" && add library "$db_path"
+
+    # גיבויים בנתיב מותאם — קבצים בשמות של אוצריא בלבד, לא התיקייה
+    backup_path="$(pref_value "$root" 'key-backup-path')"
+    if [ -n "$backup_path" ] && [ -d "$backup_path" ]; then
+        while IFS= read -r backup_file; do
+            add backups "$backup_file"
+        done < <(find "$backup_path" -maxdepth 1 \( -name 'otzaria_backup_*' -o -name 'otzaria_archive.json' -o -name 'otzaria_db_backup_*' \) 2>/dev/null)
+    fi
 done
 
 # ── התקנות ניידות ──────────────────────────────────────────────────────────
 while IFS= read -r marker; do
     dir="$(dirname "$marker")"
-    [ -x "$dir/otzaria" ] && add data "$dir"
+    is_install_dir "$dir" && add data "$dir"
 done < <(find "$HOME" -maxdepth 4 -name 'portable.marker' 2>/dev/null)
 
 # ── דיווח ──────────────────────────────────────────────────────────────────
-declare -A GROUP_LABEL=(
-    [app]="התוכנה עצמה" [data]="נתוני משתמש" [library]="ספרייה ואינדקס" [backups]="גיבויים"
-)
-
 skip_group() {
     case "$1" in
         library) [ "$KEEP_LIBRARY" = 1 ] ;;
@@ -117,19 +217,18 @@ echo
 echo "════════════════════════════════════════════"
 echo "   מסיר אוצריא טוטאלי ($OS)"
 echo "════════════════════════════════════════════"
-[ "$REMOVE" = 1 ] && echo "מצב: הסרה בפועל" || echo "מצב: סריקה בלבד (הוסף --remove כדי למחוק)"
+if [ "$REMOVE" = 1 ]; then echo "מצב: הסרה בפועל"; else echo "מצב: סריקה בלבד (הוסף --remove כדי למחוק)"; fi
 echo
 
 FOUND=()
-for entry in "${TARGETS[@]}"; do
+for entry in ${TARGETS+"${TARGETS[@]}"}; do
     group="${entry%%|*}"
     path="${entry#*|}"
-    [ -e "$path" ] || continue
     size="$(du -sh "$path" 2>/dev/null | cut -f1)"
     if skip_group "$group"; then
-        echo "  [נשמר]  ${GROUP_LABEL[$group]:-$group}: $path (${size:-?})"
+        echo "  [נשמר]   $(group_label "$group"): $path (${size:-?})"
     else
-        echo "  [למחיקה] ${GROUP_LABEL[$group]:-$group}: $path (${size:-?})"
+        echo "  [למחיקה] $(group_label "$group"): $path (${size:-?})"
         FOUND+=("$path")
     fi
 done
@@ -176,8 +275,9 @@ done
 if [ "$OS" = "Darwin" ]; then
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
         -kill -r -domain local -domain system -domain user >/dev/null 2>&1
-    defaults delete com.mendelg.otzaria >/dev/null 2>&1
-    defaults delete org.otzaria.otzaria >/dev/null 2>&1
+    for bundle in com.example.otzaria com.mendelg.otzaria org.otzaria.otzaria; do
+        defaults delete "$bundle" >/dev/null 2>&1
+    done
 else
     command -v update-desktop-database >/dev/null && update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1
     command -v update-mime-database >/dev/null && update-mime-database "$HOME/.local/share/mime" >/dev/null 2>&1

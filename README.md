@@ -8,6 +8,11 @@
 הכלי אינו נוגע בשום רכיב שהמחשב זקוק לו לתפעולו, ואינו מוחק קבצים שהמשתמש יצר בעצמו
 אלא בבקשה מפורשת.
 
+**כלל הבעלות:** שם שמכיל "otzaria" אינו מספיק. כל תיקייה שנמחקת חייבת להוכיח בעלות —
+`otzaria.exe` עם חבילת ה-assets שלצידו, `seforim.db` בתיקיית ספרים, וכן הלאה. תיקיית
+פיתוח, קיצור או משימה ששמם מכיל "otzaria" בלבד לא ייגעו. הפירוט המלא ב-
+[docs/INVENTORY.md](docs/INVENTORY.md#כלל-הבעלות).
+
 ## Windows
 
 ```powershell
@@ -56,6 +61,7 @@ powershell -ExecutionPolicy Bypass -File .\Uninstall-Otzaria.ps1 -Remove
 ```
 
 הדגלים: `--remove`, `--yes`, `--keep-library`, `--keep-backups`, `--keep-data`.
+הסקריפט תואם Bash 3.2 — ברירת המחדל ב-macOS.
 מחיקת יעדים מערכתיים (`/opt`, `/usr`, `/var/lib`) דורשת `sudo`.
 
 ## סדר הפעולות

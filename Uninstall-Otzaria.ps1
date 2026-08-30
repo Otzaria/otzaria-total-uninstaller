@@ -242,6 +242,7 @@ function Expand-OtzTarget {
                 'jumplists' { if ($Deep) { Get-OtzJumpListFindings } }
                 'wer'       { if ($Deep) { Get-OtzWerFindings } }
                 'portable'  { if ($Deep) { Get-OtzPortableFindings } }
+                'profiles'  { Get-OtzOtherProfileFindings }
             }
         }
     }
@@ -449,8 +450,9 @@ foreach ($vendor in $vendors) {
         $exe = $vendor.UninstallString.Trim('"').Split('"')[0]
         if ($exe) { $location = Split-Path -Parent $exe }
     }
-    if (-not $location -or -not (Test-Path -LiteralPath $location)) { continue }
-    if ($location.Length -le 3) { continue }
+    # רשומת הסרה מזוהה לפי substring, ולכן היעד עצמו חייב להוכיח בעלות:
+    # otzaria.exe עם חבילת ה-assets שלצידו.
+    if (-not (Test-OtzInstallDirectory $location)) { continue }
     $path = [System.IO.Path]::GetFullPath($location)
     $findings.Add((New-OtzFinding -Id 'vendor.installdir' -Group 'app' -Kind 'Directory' -Target $path `
         -SizeBytes (Get-OtzDirectorySize $path) -Note $vendor.Name -Remove {

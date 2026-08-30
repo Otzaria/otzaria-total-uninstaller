@@ -4,6 +4,9 @@
 .DESCRIPTION
     כל סורק מחזיר "ממצאים": אובייקטים עם תיאור ועם Remove — scriptblock שמבצע
     את ההסרה בפועל. הסורקים לעולם אינם מוחקים בעצמם.
+
+    כלל ברזל: שם שמכיל "otzaria" אינו הוכחת בעלות. כל יעד שנמחק כתיקייה שלמה
+    חייב לעבור מבחן בעלות — קובץ או מבנה שרק אוצריא יוצרת.
 #>
 
 function New-OtzFinding {
@@ -27,15 +30,90 @@ function New-OtzFinding {
     }
 }
 
+# ── מבחני בעלות ─────────────────────────────────────────────────────────────
+
+# סינון גס בלבד — לעולם לא כעילה יחידה למחיקת תיקייה.
 function Test-OtzOtzariaPath {
     param([string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
     return ($Value -match 'otzaria' -or $Value -match 'אוצריא')
 }
 
+# Test-Path זורק על מחרוזת שאינה נתיב חוקי (ארגומנט של משימה, ערך רישום
+# פגום). מבחני הבעלות חייבים להחזיר False ולא להפיל את הסריקה.
+function Test-OtzPathSafe {
+    param([string]$Path, [switch]$Container)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    try {
+        if ($Container) { return (Test-Path -LiteralPath $Path -PathType Container) }
+        return (Test-Path -LiteralPath $Path)
+    } catch { return $false }
+}
+
+# תיקיית התקנה: חייבת להכיל את ה-EXE של אוצריא ואת חבילת ה-assets של Flutter
+# שלצידו. תיקייה שרק שמה "Otzaria" אינה עוברת.
+function Test-OtzInstallDirectory {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path) -or $Path.Length -lt 6) { return $false }
+    if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+    if (-not (Test-OtzPathSafe (Join-Path $Path 'otzaria.exe'))) { return $false }
+    return (Test-Path -LiteralPath (Join-Path $Path 'data\flutter_assets'))
+}
+
+# קובץ הרצה של אוצריא: או otzaria.exe עצמו, או EXE בשם גנרי שיושב בתיקיית
+# התקנה מזוהה (חנות התוספים מריצה app.exe).
+function Test-OtzOwnedExecutable {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if ((Split-Path -Leaf $Path) -eq 'otzaria.exe') { return $true }
+    $dir = Split-Path -Parent $Path
+    if ([string]::IsNullOrWhiteSpace($dir)) { return $false }
+    if (Test-OtzInstallDirectory $dir) { return $true }
+    return ((Split-Path -Leaf $dir) -eq 'Otzaria Plugin Store')
+}
+
+# קובץ ששייך לרכיב של אוצריא: ההורה שלו הוא תיקייה ייעודית בשם מדויק —
+# לא התאמת substring. משמש למשימות שמריצות סקריפט דרך powershell.exe.
+function Test-OtzOwnedComponentPath {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    $dir = Split-Path -Parent $Path
+    if ([string]::IsNullOrWhiteSpace($dir)) { return $false }
+    return ((Split-Path -Leaf $dir) -in @('OtzariaDesktop', 'Otzaria', 'אוצריא', 'Otzaria Plugin Store'))
+}
+
+# תיקיית ספרים — אותם סימנים שהמתקין הרשמי בודק ב-IsOtzariaBooksFolder,
+# לפני DelTree על נתיב שהגיע מההגדרות של המשתמש.
+function Test-OtzBooksFolder {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path) -or $Path.Length -lt 6) { return $false }
+    if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+    return ((Test-OtzPathSafe (Join-Path $Path 'seforim.db')) -or
+            (Test-OtzPathSafe (Join-Path $Path 'otzar-HB_catalog.db')) -or
+            (Test-OtzPathSafe (Join-Path $Path 'תלמוד בבלי')))
+}
+
+function Test-OtzIndexFolder {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path) -or $Path.Length -lt 6) { return $false }
+    if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+    return ((Test-OtzPathSafe (Join-Path $Path 'meta.json')) -or
+            (Test-OtzPathSafe (Join-Path $Path 'tantivy.lock')) -or
+            (Test-OtzPathSafe (Join-Path $Path '.tantivy-writer.lock')))
+}
+
+function Test-OtzDatabasesFolder {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path) -or $Path.Length -lt 6) { return $false }
+    if (-not (Test-OtzPathSafe $Path -Container)) { return $false }
+    return ((Test-OtzPathSafe (Join-Path $Path 'seforim.db')) -or
+            (Test-OtzPathSafe (Join-Path $Path 'cache.db')) -or
+            (Test-OtzPathSafe (Join-Path $Path 'otzaria_lexical.db')))
+}
+
 # ── קיצורי דרך ──────────────────────────────────────────────────────────────
 # נבדק היעד עצמו ולא שם הקובץ: תוסף רשאי ליצור קיצור בשם כלשהו
-# (PluginShortcutService), ורק ה-TargetPath מסגיר אותו.
+# (PluginShortcutService), וקיצור של תוכנה אחרת עלול לשאת "otzaria" בשמו.
 function Get-OtzShortcutFindings {
     $roots = @(
         (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu'),
@@ -59,7 +137,12 @@ function Get-OtzShortcutFindings {
                 $arguments = [string]$sc.Arguments
             } catch { }
 
-            $isOtzaria = (Test-OtzOtzariaPath $target) -or ($arguments -match 'otzaria://') -or (Test-OtzOtzariaPath $lnk.Name)
+            # קיצור ליעד שכבר נמחק: אין EXE לבדוק, ולכן נדרש שם קובץ מדויק
+            # של תיקיית התקנה — לא התאמת substring.
+            $targetGone = $target -and -not (Test-OtzPathSafe $target)
+            $staleOtzaria = $targetGone -and ((Split-Path -Leaf $target) -eq 'otzaria.exe')
+
+            $isOtzaria = (Test-OtzOwnedExecutable $target) -or ($arguments -match 'otzaria://') -or $staleOtzaria
             if (-not $isOtzaria) { return }
 
             $path = $lnk.FullName
@@ -72,6 +155,16 @@ function Get-OtzShortcutFindings {
 # ── רכיבי PATH ──────────────────────────────────────────────────────────────
 # המתקין מוסיף את תיקיית ההתקנה ל-PATH (Check: ShouldAddToUserPath/System).
 # חובה לכתוב חזרה REG_EXPAND_SZ בלי להרחיב, אחרת %SystemRoot% נצרב כטקסט.
+function Test-OtzPathEntryOwned {
+    param([string]$Entry)
+    $value = $Entry.Trim().TrimEnd('\')
+    if ([string]::IsNullOrWhiteSpace($value)) { return $false }
+    if (Test-OtzInstallDirectory $value) { return $true }
+    # רכיב יתום שנשאר אחרי הסרה — מזוהה רק בשם תיקייה מדויק, לא ב-substring.
+    if (Test-OtzPathSafe $value) { return $false }
+    return ((Split-Path -Leaf $value) -in @('Otzaria', 'אוצריא'))
+}
+
 function Get-OtzPathFindings {
     $specs = @(
         @{ Hive = 'User';    Sub = 'Environment'; Scope = 'User' },
@@ -91,13 +184,13 @@ function Get-OtzPathFindings {
 
         if (-not $raw) { continue }
         $parts = ([string]$raw) -split ';'
-        $hits = $parts | Where-Object { Test-OtzOtzariaPath $_ }
+        $hits = $parts | Where-Object { Test-OtzPathEntryOwned $_ }
         if (-not $hits) { continue }
 
         $subKeyPath = $spec.Sub
         $hiveName = $spec.Hive
         $valueKind = $kind
-        $kept = ($parts | Where-Object { -not (Test-OtzOtzariaPath $_) }) -join ';'
+        $kept = ($parts | Where-Object { -not (Test-OtzPathEntryOwned $_) }) -join ';'
 
         New-OtzFinding -Id 'scan.path' -Group 'app' -Kind 'RegValue' `
             -Target "$($spec.Hive) PATH: $($hits -join ' | ')" -Note $spec.Scope -Remove {
@@ -113,13 +206,17 @@ function Get-OtzPathFindings {
 }
 
 # ── כללי חומת אש ────────────────────────────────────────────────────────────
+# רק לפי נתיב התוכנית שבכלל; שם הכלל אינו קובע.
 function Get-OtzFirewallFindings {
     $policy = $null
     try { $policy = New-Object -ComObject HNetCfg.FwPolicy2 } catch { return }
     foreach ($rule in $policy.Rules) {
         $app = ''
         try { $app = [string]$rule.ApplicationName } catch { }
-        if (-not (Test-OtzOtzariaPath $app) -and -not (Test-OtzOtzariaPath $rule.Name)) { continue }
+        if (-not (Test-OtzOwnedExecutable $app)) {
+            # כלל שנשאר אחרי מחיקת ה-EXE: שם הקובץ המדויק בלבד.
+            if (-not ($app -and (Split-Path -Leaf $app) -eq 'otzaria.exe')) { continue }
+        }
         $name = [string]$rule.Name
         New-OtzFinding -Id 'scan.firewall' -Group 'traces' -Kind 'FirewallRule' -Target $name -Note $app -Remove {
             $p = New-Object -ComObject HNetCfg.FwPolicy2
@@ -129,16 +226,29 @@ function Get-OtzFirewallFindings {
 }
 
 # ── משימות מתוזמנות ─────────────────────────────────────────────────────────
+# רק לפי ה-EXE שהמשימה מריצה; שם המשימה אינו קובע.
 function Get-OtzScheduledTaskFindings {
     if (-not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)) { return }
     Get-ScheduledTask -ErrorAction SilentlyContinue | ForEach-Object {
         $task = $_
-        $exePaths = @($task.Actions | Where-Object { $_.PSObject.Properties['Execute'] } |
-            ForEach-Object { [string]$_.Execute }) -join ' '
-        if (-not (Test-OtzOtzariaPath $exePaths) -and -not (Test-OtzOtzariaPath $task.TaskName)) { return }
+        $executables = @($task.Actions | Where-Object { $_.PSObject.Properties['Execute'] } |
+            ForEach-Object { [string]$_.Execute })
+        $owned = $executables | Where-Object {
+            (Test-OtzOwnedExecutable $_) -or ((Split-Path -Leaf $_) -eq 'otzaria.exe')
+        }
+        # משימה שמריצה מפעיל כללי (powershell.exe) — הבעלות נקבעת לפי הסקריפט
+        # שבארגומנטים, שההורה שלו הוא תיקיית רכיב בשם מדויק.
+        if (-not $owned) {
+            $arguments = @($task.Actions | Where-Object { $_.PSObject.Properties['Arguments'] } |
+                ForEach-Object { [string]$_.Arguments }) -join ' '
+            $quoted = [regex]::Matches($arguments, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value }
+            $owned = @($quoted | Where-Object { Test-OtzOwnedComponentPath $_ })
+        }
+        if (-not $owned) { return }
         $taskName = $task.TaskName
         $taskPath = $task.TaskPath
-        New-OtzFinding -Id 'scan.tasks' -Group 'traces' -Kind 'ScheduledTask' -Target "$taskPath$taskName" -Note $exePaths -Remove {
+        New-OtzFinding -Id 'scan.tasks' -Group 'traces' -Kind 'ScheduledTask' -Target "$taskPath$taskName" `
+            -Note ($owned -join ' ') -Remove {
             Unregister-ScheduledTask -TaskName $taskName -TaskPath $taskPath -Confirm:$false -ErrorAction Stop
         }.GetNewClosure()
     }
@@ -160,7 +270,7 @@ function Get-OtzJumpListFindings {
             try {
                 $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
                 $text = [System.Text.Encoding]::Unicode.GetString($bytes)
-                $isHit = ($text -match 'otzaria' -or $text -match 'אוצריא')
+                $isHit = ($text -match 'otzaria\.exe' -or $text -match 'Otzaria\.Otzaria')
             } catch { }
             if (-not $isHit) { return }
             $path = $file.FullName
@@ -183,13 +293,13 @@ function Get-OtzWerFindings {
     foreach ($root in $roots) {
         Get-ChildItem -LiteralPath $root -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
             $dir = $_
-            $isHit = Test-OtzOtzariaPath $dir.Name
+            $isHit = $dir.Name -match 'otzaria\.exe'
             if (-not $isHit) {
                 # דוחות של תהליכים מערכתיים חסומים בקריאה — מדלגים בשקט.
                 $wer = Join-Path $dir.FullName 'Report.wer'
                 try {
                     if (Test-Path -LiteralPath $wer -ErrorAction SilentlyContinue) {
-                        $isHit = (Select-String -LiteralPath $wer -Pattern 'otzaria' -Quiet -ErrorAction SilentlyContinue) -eq $true
+                        $isHit = (Select-String -LiteralPath $wer -Pattern 'otzaria\.exe' -Quiet -ErrorAction SilentlyContinue) -eq $true
                     }
                 } catch { }
             }
@@ -203,7 +313,7 @@ function Get-OtzWerFindings {
 }
 
 # ── התקנות ניידות ───────────────────────────────────────────────────────────
-# מזוהות לפי portable.marker שליד ה-EXE; הנתונים יושבים ב-otzaria_data שלידו.
+# portable.marker לבדו אינו מספיק — נדרשת תיקיית התקנה מלאה של אוצריא.
 function Get-OtzPortableFindings {
     param([int]$Depth = 4)
     $drives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
@@ -212,7 +322,7 @@ function Get-OtzPortableFindings {
     foreach ($drive in $drives) {
         Get-ChildItem -LiteralPath $drive.Root -Filter 'portable.marker' -Recurse -Depth $Depth -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
             $dir = $_.Directory
-            if (-not (Test-Path -LiteralPath (Join-Path $dir.FullName 'otzaria.exe'))) { return }
+            if (-not (Test-OtzInstallDirectory $dir.FullName)) { return }
             $path = $dir.FullName
             New-OtzFinding -Id 'scan.portable' -Group 'data' -Kind 'Directory' -Target $path `
                 -Note 'התקנה ניידת — כולל otzaria_data' -Remove {
@@ -222,35 +332,131 @@ function Get-OtzPortableFindings {
     }
 }
 
-# ── ספרייה בנתיב מותאם ──────────────────────────────────────────────────────
-# הנתיב נרשם ב-library_path.txt שבשורש הנתונים; חובה לקרוא אותו לפני שמוחקים
-# את השורש עצמו.
+# ── נתיבים מותאמים מההגדרות ─────────────────────────────────────────────────
+# הספרייה, האינדקס, מסדי הנתונים והגיבויים יכולים לשבת בנתיבים נפרדים
+# שנשמרו ב-shared_preferences.json; המתקין הרשמי קורא אותו באותה דרך.
+function Get-OtzPreferenceValue {
+    param([string]$DataRoot, [string]$Key)
+    $prefs = Join-Path $DataRoot 'shared_preferences.json'
+    if (-not (Test-Path -LiteralPath $prefs)) { return $null }
+    try {
+        $json = Get-Content -LiteralPath $prefs -Raw -ErrorAction Stop | ConvertFrom-Json
+    } catch { return $null }
+    foreach ($name in @("flutter.$Key", $Key)) {
+        if ($json.PSObject.Properties[$name]) {
+            $value = [string]$json.PSObject.Properties[$name].Value
+            if (-not [string]::IsNullOrWhiteSpace($value)) { return $value }
+        }
+    }
+    return $null
+}
+
 function Get-OtzCustomLibraryFindings {
     param([string[]]$DataRoots)
 
-    # שורש הספרייה עשוי להיות תיקייה שהמשתמש בחר ושיש בה עוד תוכן שלו, ולכן
-    # נמחקות ממנה רק תיקיות בשמות שאוצריא יוצרת — לא השורש עצמו.
-    $ownedNames = @('books', 'index', 'databases', 'dictionaries', 'library_update_cache', 'pdfium', 'per_book_settings')
+    # תיקיות שאוצריא יוצרת בשורש הספרייה. השורש עצמו לעולם אינו נמחק —
+    # ייתכן שהמשתמש בחר תיקייה שיש בה עוד תוכן שלו.
+    $ownedNames = @('books', 'index', 'databases', 'dictionaries', 'library_update_cache',
+                    'pdfium', 'per_book_settings', '.otzaria-books-backup', '.otzaria-index-backup')
     $seen = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
 
+    function Add-OwnedDirectory {
+        param([string]$Candidate, [string]$Source, [string]$Group = 'library')
+        if ([string]::IsNullOrWhiteSpace($Candidate)) { return }
+        if (-not (Test-Path -LiteralPath $Candidate -PathType Container)) { return }
+        $full = [System.IO.Path]::GetFullPath($Candidate)
+        if ($full.Length -le 3) { return }
+        if (-not $seen.Add($full)) { return }
+        $path = $full
+        New-OtzFinding -Id 'scan.library' -Group $Group -Kind 'Directory' -Target $path -Note $Source -Remove {
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+        }.GetNewClosure()
+    }
+
     foreach ($root in $DataRoots) {
+        # ── ספרייה ──
+        $libPath = $null
         $record = Join-Path $root 'library_path.txt'
-        if (-not (Test-Path -LiteralPath $record)) { continue }
-        $libPath = ''
-        try { $libPath = (Get-Content -LiteralPath $record -Raw -ErrorAction Stop).Trim() } catch { continue }
-        if ([string]::IsNullOrWhiteSpace($libPath) -or -not (Test-Path -LiteralPath $libPath)) { continue }
+        if (Test-Path -LiteralPath $record) {
+            try { $libPath = (Get-Content -LiteralPath $record -Raw -ErrorAction Stop).Trim() } catch { }
+        }
+        if ([string]::IsNullOrWhiteSpace($libPath)) {
+            $libPath = Get-OtzPreferenceValue -DataRoot $root -Key 'key-library-path'
+        }
 
-        $libRoot = if ((Split-Path -Leaf $libPath) -eq 'books') { Split-Path -Parent $libPath } else { $libPath }
-        if ([string]::IsNullOrWhiteSpace($libRoot) -or $libRoot.Length -le 3) { continue }
+        if (-not [string]::IsNullOrWhiteSpace($libPath)) {
+            $booksPath = if ((Split-Path -Leaf $libPath) -eq 'books') { $libPath } else { Join-Path $libPath 'books' }
+            $libRoot = if ((Split-Path -Leaf $libPath) -eq 'books') { Split-Path -Parent $libPath } else { $libPath }
 
-        foreach ($name in $ownedNames) {
-            $candidate = Join-Path $libRoot $name
+            # מבחן הבעלות של המתקין הרשמי: בלעדיו לא נוגעים בנתיב מההגדרות.
+            if ((Test-OtzBooksFolder $booksPath) -or (Test-OtzBooksFolder $libPath)) {
+                foreach ($name in $ownedNames) {
+                    Add-OwnedDirectory -Candidate (Join-Path $libRoot $name) -Source "ספרייה מותאמת, לפי $root"
+                }
+            }
+        }
+
+        # ── אינדקס, מסדי נתונים, ספרים אישיים ──
+        $indexPath = Get-OtzPreferenceValue -DataRoot $root -Key 'key-index-path'
+        if ($indexPath -and (Test-OtzIndexFolder $indexPath)) {
+            Add-OwnedDirectory -Candidate $indexPath -Source "אינדקס מותאם, לפי $root"
+        }
+        $dbPath = Get-OtzPreferenceValue -DataRoot $root -Key 'key-databases-path'
+        if ($dbPath -and (Test-OtzDatabasesFolder $dbPath)) {
+            Add-OwnedDirectory -Candidate $dbPath -Source "מסדי נתונים מותאמים, לפי $root"
+        }
+
+        # ── גיבויים מותאמים — נמחקים קבצים בשמות של אוצריא, לא התיקייה ──
+        $backupPath = Get-OtzPreferenceValue -DataRoot $root -Key 'key-backup-path'
+        if ($backupPath -and (Test-Path -LiteralPath $backupPath -PathType Container)) {
+            foreach ($pattern in @('otzaria_backup_*', 'otzaria_archive.json', 'otzaria_db_backup_*')) {
+                Get-ChildItem -LiteralPath $backupPath -Filter $pattern -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                    $file = $_
+                    $path = $file.FullName
+                    New-OtzFinding -Id 'scan.library' -Group 'backups' -Kind 'File' -Target $path `
+                        -SizeBytes $file.Length -Note "גיבויים בנתיב מותאם, לפי $root" -Remove {
+                        Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+                    }.GetNewClosure()
+                }
+            }
+        }
+    }
+}
+
+# ── פרופילי משתמשים אחרים ───────────────────────────────────────────────────
+# בהסרת התקנת מנהל, המשתמש שמריץ אינו בהכרח זה שהתקין — המתקין הרשמי עובר
+# על כל הפרופילים, וכך גם כאן. דורש הרשאות מנהל.
+function Get-OtzOtherProfileFindings {
+    $profilesRoot = Split-Path -Parent $env:USERPROFILE
+    if (-not (Test-Path -LiteralPath $profilesRoot)) { return }
+    $currentProfile = [System.IO.Path]::GetFullPath($env:USERPROFILE)
+
+    $relatives = @(
+        @{ Path = 'AppData\Roaming\otzaria'; Group = 'data' },
+        @{ Path = 'AppData\Roaming\אוצריא'; Group = 'data' },
+        @{ Path = 'AppData\Roaming\Otzaria'; Group = 'data' },
+        @{ Path = 'AppData\Roaming\com.example\otzaria'; Group = 'data' },
+        @{ Path = 'AppData\Local\otzaria'; Group = 'data' },
+        @{ Path = 'AppData\Local\אוצריא'; Group = 'data' },
+        @{ Path = 'AppData\Local\Programs\Otzaria'; Group = 'app' },
+        @{ Path = 'AppData\Local\Otzaria Plugin Store'; Group = 'related' },
+        @{ Path = 'AppData\Local\com.otzaria.store'; Group = 'related' },
+        @{ Path = 'Documents\otzaria'; Group = 'data' },
+        @{ Path = 'Documents\אוצריא - גיבויים'; Group = 'backups' },
+        @{ Path = 'Documents\OtzariaBackups'; Group = 'backups' }
+    )
+
+    Get-ChildItem -LiteralPath $profilesRoot -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $profileDir = $_
+        if ([System.IO.Path]::GetFullPath($profileDir.FullName) -eq $currentProfile) { return }
+        if ($profileDir.Name -in @('Public', 'Default', 'Default User', 'All Users')) { return }
+
+        foreach ($entry in $relatives) {
+            $candidate = Join-Path $profileDir.FullName $entry.Path
             if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
-            $full = [System.IO.Path]::GetFullPath($candidate)
-            if (-not $seen.Add($full)) { continue }
-            $path = $full
-            New-OtzFinding -Id 'scan.library' -Group 'library' -Kind 'Directory' -Target $path `
-                -Note "ספרייה בנתיב מותאם, לפי $record" -Remove {
+            $path = $candidate
+            New-OtzFinding -Id 'scan.profiles' -Group $entry.Group -Kind 'Directory' -Target $path `
+                -Note "פרופיל $($profileDir.Name)" -Remove {
                 Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
             }.GetNewClosure()
         }

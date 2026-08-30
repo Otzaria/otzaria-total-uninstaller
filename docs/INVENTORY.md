@@ -3,6 +3,29 @@
 כל רשומה כאן מגיעה מקוד המקור של אוצריא או מהמתקין, כולל מגרסאות שכבר אינן בשימוש.
 מטרת המסמך: שכל יעד יהיה ניתן לאימות מול המקור שיצר אותו, ושלא יהיו יעדים "כי ליתר ביטחון".
 
+## כלל הבעלות
+
+**שם שמכיל "otzaria" אינו הוכחת בעלות.** כל יעד שנמחק כתיקייה שלמה חייב לעבור מבחן
+בעלות — קובץ או מבנה שרק אוצריא יוצרת:
+
+| היעד | מבחן הבעלות |
+|---|---|
+| תיקיית התקנה | `otzaria.exe` **וגם** `datalutter_assets` שלצידו |
+| תיקיית ספרים | `seforim.db` או `otzar-HB_catalog.db` או `תלמוד בבלי` — אותם סימנים כמו `IsOtzariaBooksFolder` במתקין הרשמי |
+| תיקיית אינדקס | `meta.json` / `tantivy.lock` / `.tantivy-writer.lock` |
+| תיקיית מסדי נתונים | `seforim.db` / `cache.db` / `otzaria_lexical.db` |
+| קיצור | ה-`TargetPath` הוא EXE של אוצריא, או שהפרמטרים מכילים `otzaria://` — **לא** שם הקיצור |
+| רכיב `PATH` | התיקייה עוברת את מבחן תיקיית ההתקנה; רכיב יתום שכבר נמחק מזוהה רק בשם תיקייה מדויק (`Otzaria` / `אוצריא`) |
+| כלל חומת אש | נתיב התוכנית בכלל — **לא** שם הכלל |
+| משימה מתוזמנת | ה-EXE שהיא מריצה; כשהיא מריצה מפעיל כללי (`powershell.exe`), הסקריפט שבפרמטרים חייב לשבת בתיקיית רכיב בשם מדויק |
+| התקנה ניידת | `portable.marker` **וגם** תיקיית התקנה מלאה |
+| `InstallLocation` של רשומת הסרה | מבחן תיקיית ההתקנה — רשומת ההסרה עצמה מזוהה ב-substring, ולכן היעד חייב להוכיח את עצמו |
+
+**החריג היחיד** הוא מחיקת *ערכים* בודדים במפתחות סטטיסטיקה של Windows (`MuiCache`,
+`AppCompatFlags`, `FeatureUsage`, `JumplistData`): שם הערך הוא נתיב EXE, ההתאמה היא
+substring, והנזק המרבי הוא מחיקת רשומת שימוש של תוכנה אחרת ששמה מכיל "otzaria" —
+לא מחיקת קובץ.
+
 ## תיקיות התקנה
 
 | נתיב | מקור |
@@ -11,6 +34,7 @@
 | `%ProgramFiles%\אוצריא` | ברירת המחדל בגרסאות שבהן `MyAppName` שימש גם כשם התיקייה |
 | `%ProgramFiles(x86)%\…` | התקנת 32 סיביות היסטורית |
 | `C:\אוצריא` | נתיב שנסרק ע"י `FindPreviousInstallDir` במתקין — התקנות ישנות בשורש הכונן |
+| `C:\Otzaria` | ברירת המחדל של `DefaultDirName` עד commit `c5a1ebd44` |
 | `%LOCALAPPDATA%\Programs\Otzaria` | התקנת משתמש (`IsAdminInstallMode = false`) |
 
 תיקיות התקנה נוספות מתגלות דינמית מתוך `InstallLocation` / `UninstallString` שברשומות
@@ -33,7 +57,12 @@
 | `%APPDATA%\com.example\otzaria` | `CompanyName` בגרסאות המוקדמות (ברירת המחדל של Flutter) |
 | `%LOCALAPPDATA%\otzaria` | מטמון |
 | `%ProgramData%\otzaria` | שורש הנתונים בהתקנת מנהל — מזוהה גם ע"י `OrphanLibraryService` שבתוכנה עצמה |
+| `%LOCALAPPDATA%\אוצריא` | נתיב legacy שמסיר ההתקנה הרשמי עדיין מנקה |
 | `Documents\otzaria` | שורש היסטורי מבוסס `getApplicationDocumentsDirectory` |
+
+נתונים של **משתמשים אחרים** במחשב נסרקים אף הם (דורש הרשאות מנהל), כמו
+`DeleteUserDataInAllProfiles` שבמתקין: בהסרת התקנת מנהל, מי שמריץ אינו בהכרח מי
+שהתקין.
 
 ## ספרייה ואינדקס
 
@@ -43,12 +72,20 @@
 
 שורש הספרייה עשוי להיות תיקייה שהמשתמש בחר ושיש בה עוד תוכן שלו, ולכן השורש עצמו
 לעולם אינו נמחק — נמחקות ממנו רק תיקיות בשמות שאוצריא יוצרת: `books`, `index`,
-`databases`, `dictionaries`, `library_update_cache`, `pdfium`, `per_book_settings`.
+`databases`, `dictionaries`, `library_update_cache`, `pdfium`, `per_book_settings`,
+וכן `.otzaria-books-backup` ו-`.otzaria-index-backup` — תיקיות ה-rollback של המתקין
+המלא. וגם זאת רק אחרי שתיקיית הספרים עברה את מבחן הבעלות; אחרת הנתיב מדולג בהודעה.
+
+האינדקס, מסדי הנתונים והגיבויים יכולים לשבת בנתיבים נפרדים
+(`key-index-path`, `key-databases-path`, `key-backup-path`), שנשמרים ב-
+`shared_preferences.json` שבשורש הנתונים — הכלי קורא אותו כמו המתקין הרשמי. בנתיב
+גיבויים מותאם נמחקים **קבצים** בשמות של אוצריא בלבד, לא התיקייה.
 
 ## גיבויים
 
-`AppPaths.getDefaultBackupPath()` — `Documents\אוצריא - גיבויים`, ובנוסף `backups`
-שבתוך שורש הנתונים (נמחק יחד איתו).
+`AppPaths.getDefaultBackupPath()` — `Documents\אוצריא - גיבויים`, הנתיב ההיסטורי
+`Documents\OtzariaBackups` (הוסר ב-commit `0de51c8fc`), ובנוסף `backups` שבתוך שורש
+הנתונים (נמחק יחד איתו).
 
 ## רכיבים נלווים
 
@@ -57,6 +94,7 @@
 | `%LOCALAPPDATA%\Otzaria Plugin Store` | אפליקציית חנות התוספים (מתקין NSIS נפרד, רשומת הסרה משלה) |
 | `%LOCALAPPDATA%\com.otzaria.store` | פרופיל ה-WebView2 של החנות |
 | `%ProgramData%\OtzariaDesktop` | סוכן/שרת נלווה |
+| `%SystemDrive%\OtzariaDesktop` | אותו סוכן בשורש הכונן |
 
 ## רישום Windows
 
@@ -127,9 +165,13 @@
 
 ## macOS
 
-`/Applications/Otzaria.app`, `~/Library/Application Support/otzaria`,
-`/Library/Application Support/Otzaria`, ולכל אחד משני מזהי החבילה ההיסטוריים
-(`com.mendelg.otzaria`, `org.otzaria.otzaria`): `Preferences/*.plist`, `Caches`,
+שם היישום נגזר מ-`PRODUCT_NAME` שב-`macos/Runner/Configs/AppInfo.xcconfig`, והוא
+`אוצריא` בגרסאות הנוכחיות — לכן נסרקים גם `אוצריא.app` וגם `Otzaria.app`.
+
+`/Applications/אוצריא.app`, `~/Library/Application Support/otzaria`,
+`/Library/Application Support/Otzaria`, ולכל אחד ממזהי החבילה לאורך הדורות
+(`com.example.otzaria` — הנוכחי לפי `AppInfo.xcconfig`, `com.mendelg.otzaria`,
+`org.otzaria.otzaria`): `Preferences/*.plist`, `Caches`,
 `WebKit`, `HTTPStorages`, `Saved Application State`. בסיום מורץ `lsregister -kill -r`
 כדי לנקות את רישום השיוכים.
 
