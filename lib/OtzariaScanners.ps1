@@ -185,10 +185,13 @@ function Get-OtzWerFindings {
             $dir = $_
             $isHit = Test-OtzOtzariaPath $dir.Name
             if (-not $isHit) {
+                # דוחות של תהליכים מערכתיים חסומים בקריאה — מדלגים בשקט.
                 $wer = Join-Path $dir.FullName 'Report.wer'
-                if (Test-Path -LiteralPath $wer) {
-                    try { $isHit = (Select-String -LiteralPath $wer -Pattern 'otzaria' -Quiet -ErrorAction SilentlyContinue) -eq $true } catch { }
-                }
+                try {
+                    if (Test-Path -LiteralPath $wer -ErrorAction SilentlyContinue) {
+                        $isHit = (Select-String -LiteralPath $wer -Pattern 'otzaria' -Quiet -ErrorAction SilentlyContinue) -eq $true
+                    }
+                } catch { }
             }
             if (-not $isHit) { return }
             $path = $dir.FullName
@@ -225,7 +228,11 @@ function Get-OtzPortableFindings {
 function Get-OtzCustomLibraryFindings {
     param([string[]]$DataRoots)
 
+    # שורש הספרייה עשוי להיות תיקייה שהמשתמש בחר ושיש בה עוד תוכן שלו, ולכן
+    # נמחקות ממנה רק תיקיות בשמות שאוצריא יוצרת — לא השורש עצמו.
+    $ownedNames = @('books', 'index', 'databases', 'dictionaries', 'library_update_cache', 'pdfium', 'per_book_settings')
     $seen = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+
     foreach ($root in $DataRoots) {
         $record = Join-Path $root 'library_path.txt'
         if (-not (Test-Path -LiteralPath $record)) { continue }
@@ -233,21 +240,19 @@ function Get-OtzCustomLibraryFindings {
         try { $libPath = (Get-Content -LiteralPath $record -Raw -ErrorAction Stop).Trim() } catch { continue }
         if ([string]::IsNullOrWhiteSpace($libPath) -or -not (Test-Path -LiteralPath $libPath)) { continue }
 
-        # הנתיב שנרשם הוא תיקיית הספרים; שורש הספרייה הוא ההורה שלה.
-        $libRoot = Split-Path -Parent $libPath
-        foreach ($candidate in @($libPath, $libRoot)) {
-            if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        $libRoot = if ((Split-Path -Leaf $libPath) -eq 'books') { Split-Path -Parent $libPath } else { $libPath }
+        if ([string]::IsNullOrWhiteSpace($libRoot) -or $libRoot.Length -le 3) { continue }
+
+        foreach ($name in $ownedNames) {
+            $candidate = Join-Path $libRoot $name
+            if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
             $full = [System.IO.Path]::GetFullPath($candidate)
-            # שורש שכבר נמחק כשורש נתונים, או נתיב-על מסוכן (כונן שלם) — מדלגים.
-            if ($full.Length -le 3) { continue }
-            if ($DataRoots | Where-Object { $_ -and $full.Equals([System.IO.Path]::GetFullPath($_), [StringComparison]::OrdinalIgnoreCase) }) { continue }
             if (-not $seen.Add($full)) { continue }
             $path = $full
             New-OtzFinding -Id 'scan.library' -Group 'library' -Kind 'Directory' -Target $path `
-                -Note "נרשם ב-$record" -Remove {
+                -Note "ספרייה בנתיב מותאם, לפי $record" -Remove {
                 Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
             }.GetNewClosure()
-            break
         }
     }
 }
